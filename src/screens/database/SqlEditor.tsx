@@ -42,7 +42,7 @@ export function SqlEditor({ sql, onChangeSql }: { sql: string; onChangeSql: (sql
           value={sql}
           onChangeText={onChangeSql}
           multiline
-          placeholder="Write SQL here, e.g. SELECT * FROM products;"
+          placeholder="Write SQL here, e.g. SELECT * FROM medicines;"
           placeholderTextColor="#64748B"
           autoCapitalize="none"
           autoCorrect={false}

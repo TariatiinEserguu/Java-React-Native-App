@@ -25,7 +25,7 @@ Run lint and typecheck before declaring any task done.
 
 ## Navigation & Routing
 
-- This prototype uses a minimal custom bottom-tab bar in `App.tsx` (no router dependency). Screens live in `src/screens/`, database code in `src/db/`.
+- This prototype uses a minimal custom bottom-tab bar in `App.tsx` (no router dependency). Screens live in `src/screens/`, database code (schema, triggers, queries) in `src/db/`, business logic with permission checks in `src/services/`. Backend tests: `npm test`.
 - If the app grows beyond a handful of screens, migrate to **Expo Router**: https://docs.expo.dev/router/introduction.md
 
 ## Building with EAS
