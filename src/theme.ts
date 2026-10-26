@@ -1,19 +1,21 @@
 import { Platform } from 'react-native';
 
 export const colors = {
-  bg: '#F4F6FA',
+  bg: '#F3F6F6',
   surface: '#FFFFFF',
-  border: '#E2E6EE',
-  text: '#1B2333',
-  muted: '#667085',
-  primary: '#3559E0',
-  primarySoft: '#E8EDFD',
+  border: '#DFE6E6',
+  text: '#15282A',
+  muted: '#5F7173',
+  primary: '#0F766E',
+  primarySoft: '#E3F2F0',
   danger: '#C4320A',
   dangerSoft: '#FDECEA',
   success: '#12805C',
   successSoft: '#E5F5EE',
   warning: '#B54708',
   warningSoft: '#FEF3E2',
+  info: '#2E5AAC',
+  infoSoft: '#E8EEFB',
   codeBg: '#0F172A',
   codeText: '#E2E8F0',
 };

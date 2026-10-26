@@ -1,0 +1,159 @@
+// PharmaCare – ERD source for https://dbdiagram.io
+// Paste this whole file into the editor on the left. Export via "Export → PNG / PDF".
+
+Project PharmaCare {
+  database_type: 'SQLite'
+  Note: 'Offline pharmacy app. Money = whole MNT. Dates = YYYY-MM-DD text.'
+}
+
+Table users {
+  user_id integer [pk, increment]
+  full_name text [not null]
+  username text [not null, unique]
+  password_hash text [not null]
+  password_salt text [not null]
+  role text [not null, note: 'ADMIN | PHARMACIST | CASHIER']
+  is_active integer [not null, default: 1]
+  last_login_at text
+  created_at text [not null]
+}
+
+Table categories {
+  category_id integer [pk, increment]
+  category_name text [not null, unique]
+  description text
+  is_active integer [not null, default: 1]
+}
+
+Table medicines {
+  medicine_id integer [pk, increment]
+  category_id integer [not null, ref: > categories.category_id]
+  brand_name text [not null]
+  generic_name text [not null]
+  strength text
+  dosage_form text [not null]
+  unit text [not null]
+  barcode text [unique]
+  selling_price integer [not null, note: 'MNT, >= 0']
+  min_stock_level integer [not null, default: 10]
+  requires_prescription integer [not null, default: 0]
+  is_active integer [not null, default: 1]
+  created_at text [not null]
+  updated_at text [not null]
+
+  indexes {
+    (brand_name, strength, dosage_form, unit) [unique]
+    generic_name
+  }
+}
+
+Table suppliers {
+  supplier_id integer [pk, increment]
+  supplier_name text [not null, unique]
+  contact_person text
+  phone text
+  email text
+  address text
+  is_active integer [not null, default: 1]
+}
+
+Table medicine_batches {
+  batch_id integer [pk, increment]
+  medicine_id integer [not null, ref: > medicines.medicine_id]
+  supplier_id integer [ref: > suppliers.supplier_id, note: 'nullable']
+  batch_number text [not null]
+  purchase_price integer [not null, note: 'MNT per unit']
+  quantity_received integer [not null, note: '> 0']
+  quantity_remaining integer [not null, note: '0..quantity_received']
+  received_date text [not null]
+  expiry_date text [not null]
+  is_active integer [not null, default: 1, note: '0 = quarantined / recalled']
+  created_at text [not null]
+
+  indexes {
+    (medicine_id, supplier_id, batch_number) [unique]
+    (medicine_id, expiry_date)
+    expiry_date
+  }
+}
+
+Table customers {
+  customer_id integer [pk, increment]
+  full_name text [not null]
+  phone text [unique]
+  email text
+  notes text
+  created_at text [not null]
+}
+
+Table prescriptions {
+  prescription_id integer [pk, increment]
+  customer_id integer [ref: > customers.customer_id, note: 'nullable']
+  verified_by integer [not null, ref: > users.user_id]
+  patient_name text [not null]
+  prescriber_name text [not null]
+  prescription_number text
+  issue_date text [not null]
+  verified_at text [not null]
+  notes text
+}
+
+Table orders {
+  order_id integer [pk, increment]
+  order_number text [not null, unique]
+  customer_id integer [ref: > customers.customer_id, note: 'NULL = walk-in']
+  user_id integer [not null, ref: > users.user_id]
+  status text [not null, default: 'PENDING', note: 'PENDING | COMPLETED | CANCELLED | REFUNDED']
+  payment_method text [note: 'CASH | CARD | QPAY | OTHER']
+  payment_status text [not null, default: 'UNPAID', note: 'UNPAID | PAID | PARTIALLY_REFUNDED | REFUNDED']
+  subtotal integer [not null, default: 0]
+  discount_amount integer [not null, default: 0]
+  total_amount integer [not null, default: 0]
+  refunded_amount integer [not null, default: 0]
+  created_at text [not null]
+  completed_at text
+  cancelled_at text
+  notes text
+
+  indexes {
+    (status, completed_at)
+    customer_id
+  }
+}
+
+Table order_items {
+  order_item_id integer [pk, increment]
+  order_id integer [not null, ref: > orders.order_id]
+  medicine_id integer [not null, ref: > medicines.medicine_id]
+  prescription_id integer [ref: > prescriptions.prescription_id, note: 'required for Rx-only']
+  quantity integer [not null, note: '> 0']
+  unit_price integer [not null, note: 'price at time of sale']
+  line_total integer [not null, note: 'quantity * unit_price']
+  quantity_returned integer [not null, default: 0]
+
+  indexes {
+    (order_id, medicine_id) [unique]
+  }
+}
+
+Table stock_movements {
+  movement_id integer [pk, increment]
+  batch_id integer [not null, ref: > medicine_batches.batch_id]
+  user_id integer [not null, ref: > users.user_id]
+  order_item_id integer [ref: > order_items.order_item_id, note: 'required for SALE / RETURN']
+  movement_type text [not null, note: 'RECEIPT | SALE | RETURN | ADJUSTMENT | WRITE_OFF']
+  quantity_change integer [not null, note: 'signed: + in, - out']
+  reason text
+  movement_date text [not null]
+
+  indexes {
+    (batch_id, movement_date)
+    order_item_id
+  }
+}
+
+Table app_settings {
+  setting_key text [pk]
+  setting_value text [not null]
+  updated_at text [not null]
+}

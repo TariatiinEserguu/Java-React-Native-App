@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -123,7 +124,8 @@ export function SearchBar({ value, onChangeText, placeholder }: { value: string;
 
 const badgeTones = {
   neutral: { bg: '#EEF0F4', fg: colors.muted },
-  info: { bg: colors.primarySoft, fg: colors.primary },
+  info: { bg: colors.infoSoft, fg: colors.info },
+  primary: { bg: colors.primarySoft, fg: colors.primary },
   success: { bg: colors.successSoft, fg: colors.success },
   warning: { bg: colors.warningSoft, fg: colors.warning },
   danger: { bg: colors.dangerSoft, fg: colors.danger },
@@ -155,6 +157,79 @@ export function ErrorBanner({ message }: { message: string }) {
   return (
     <View style={styles.errorBanner}>
       <Text style={styles.errorBannerText}>{message}</Text>
+    </View>
+  );
+}
+
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly (readonly [T, string])[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <View style={styles.segment}>
+      {options.map(([key, label]) => (
+        <Pressable
+          key={key}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: value === key }}
+          onPress={() => onChange(key)}
+          style={[styles.segmentItem, value === key && styles.segmentActive]}
+        >
+          <Text numberOfLines={1} style={[styles.segmentText, value === key && styles.segmentTextActive]}>
+            {label}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+export function Stat({ label, value, note, tone, onPress }: { label: string; value: string; note?: string; tone?: BadgeTone; onPress?: () => void }) {
+  const color = tone ? badgeTones[tone].fg : colors.text;
+  return (
+    <Pressable disabled={!onPress} onPress={onPress} style={({ pressed }) => [styles.card, styles.stat, pressed && styles.pressed]}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, { color }]}>{value}</Text>
+      {note ? <Text style={styles.hint}>{note}</Text> : null}
+    </Pressable>
+  );
+}
+
+export function ToggleField({ label, value, onChange, hint }: { label: string; value: boolean; onChange: (v: boolean) => void; hint?: string }) {
+  return (
+    <View style={[styles.field, styles.toggleRow]}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.label}>{label}</Text>
+        {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      </View>
+      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.primary, false: colors.border }} />
+    </View>
+  );
+}
+
+/** Tappable list item card. */
+export function ListItem({ children, onPress, style }: { children: ReactNode; onPress?: () => void; style?: StyleProp<ViewStyle> }) {
+  return (
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, styles.listItem, pressed && styles.pressed, style]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+export function KeyValue({ label, value, strong }: { label: string; value: ReactNode; strong?: boolean }) {
+  return (
+    <View style={styles.kv}>
+      <Text style={styles.kvLabel}>{label}</Text>
+      <Text style={[styles.kvValue, strong && styles.kvStrong]}>{value}</Text>
     </View>
   );
 }
@@ -208,7 +283,7 @@ export const styles = StyleSheet.create({
   hint: { color: colors.muted, fontSize: 12, marginTop: 4 },
   search: { marginBottom: 12 },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, alignSelf: 'flex-start' },
-  badgeText: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
+  badgeText: { fontSize: 12, fontWeight: '600' },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -223,4 +298,18 @@ export const styles = StyleSheet.create({
   empty: { textAlign: 'center', color: colors.muted, paddingVertical: 24 },
   errorBanner: { backgroundColor: colors.dangerSoft, borderRadius: radius, padding: 12, marginBottom: 12 },
   errorBannerText: { color: colors.danger },
+  segment: { flexDirection: 'row', backgroundColor: '#E3E9E9', borderRadius: 10, padding: 3, marginBottom: 12 },
+  segmentItem: { flex: 1, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8, alignItems: 'center' },
+  segmentActive: { backgroundColor: colors.surface },
+  segmentText: { fontWeight: '600', fontSize: 13, color: colors.muted },
+  segmentTextActive: { color: colors.text },
+  stat: { flexGrow: 1, flexBasis: 150 },
+  statLabel: { fontSize: 13, color: colors.muted, fontWeight: '600' },
+  statValue: { fontSize: 22, fontWeight: '700', color: colors.text, marginVertical: 4, fontVariant: ['tabular-nums'] },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  listItem: { paddingVertical: 12, marginBottom: 8 },
+  kv: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 4 },
+  kvLabel: { color: colors.muted, fontSize: 14 },
+  kvValue: { color: colors.text, fontSize: 14, flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  kvStrong: { fontWeight: '700', fontSize: 16 },
 });
