@@ -1,213 +1,352 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-export const LOW_STOCK_THRESHOLD = 5;
+import type { Role } from '../services/permissions';
 
-export type Category = { id: number; name: string };
+// Read queries for the screens. All writes go through src/services (permission checks + transactions).
 
-export type Product = {
-  id: number;
-  name: string;
-  sku: string;
-  category_id: number | null;
-  category_name: string | null;
-  price: number;
-  quantity: number;
-  created_at: string;
+export type Category = { category_id: number; category_name: string; description: string | null; is_active: number; medicine_count: number };
+
+export type Supplier = {
+  supplier_id: number;
+  supplier_name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  is_active: number;
+  batch_count: number;
 };
-export type ProductInput = Pick<Product, 'name' | 'sku' | 'category_id' | 'price' | 'quantity'>;
+
+export type StockState = 'OUT' | 'LOW' | 'OK';
+
+export type Medicine = {
+  medicine_id: number;
+  category_id: number;
+  category_name: string;
+  brand_name: string;
+  generic_name: string;
+  strength: string | null;
+  dosage_form: string;
+  unit: string;
+  barcode: string | null;
+  selling_price: number;
+  min_stock_level: number;
+  requires_prescription: number;
+  is_active: number;
+  sellable_stock: number;
+  stock_on_hand: number;
+  next_expiry: string | null;
+  stock_state: StockState;
+};
+
+export type BatchState = 'SELLABLE' | 'NEAR_EXPIRY' | 'EXPIRED' | 'DEPLETED' | 'QUARANTINED';
+
+export type Batch = {
+  batch_id: number;
+  medicine_id: number;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  brand_name: string;
+  generic_name: string;
+  strength: string | null;
+  unit: string;
+  batch_number: string;
+  purchase_price: number;
+  quantity_received: number;
+  quantity_remaining: number;
+  received_date: string;
+  expiry_date: string;
+  is_active: number;
+  days_to_expiry: number;
+  batch_state: BatchState;
+  is_sellable: number;
+};
+
+export type Movement = {
+  movement_id: number;
+  batch_id: number;
+  batch_number: string;
+  brand_name: string;
+  movement_type: 'RECEIPT' | 'SALE' | 'RETURN' | 'ADJUSTMENT' | 'WRITE_OFF';
+  quantity_change: number;
+  reason: string | null;
+  movement_date: string;
+  user_name: string;
+  order_number: string | null;
+};
 
 export type Customer = {
-  id: number;
-  name: string;
-  email: string;
+  customer_id: number;
+  full_name: string;
   phone: string | null;
-  city: string | null;
+  email: string | null;
+  notes: string | null;
   created_at: string;
   order_count: number;
   total_spent: number;
+  last_visit: string | null;
 };
-export type CustomerInput = Pick<Customer, 'name' | 'email' | 'phone' | 'city'>;
 
-export const ORDER_STATUSES = ['pending', 'shipped', 'delivered', 'cancelled'] as const;
-export type OrderStatus = (typeof ORDER_STATUSES)[number];
+export type OrderStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED';
 
-export type Order = {
-  id: number;
-  customer_id: number;
-  customer_name: string;
-  product_id: number;
-  product_name: string;
-  quantity: number;
-  total: number;
+export type OrderSummary = {
+  order_id: number;
+  order_number: string;
   status: OrderStatus;
+  payment_method: string | null;
+  payment_status: string;
+  subtotal: number;
+  discount_amount: number;
+  total_amount: number;
+  refunded_amount: number;
+  created_at: string;
+  completed_at: string | null;
+  notes: string | null;
+  customer_id: number | null;
+  customer_name: string | null;
+  user_id: number;
+  staff_name: string;
+  item_count: number;
+};
+
+export type OrderLine = {
+  order_item_id: number;
+  medicine_id: number;
+  label: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  quantity_returned: number;
+  prescription_id: number | null;
+  prescriber_name: string | null;
+  batches: string | null;
+};
+
+export type User = {
+  user_id: number;
+  full_name: string;
+  username: string;
+  role: Role;
+  is_active: number;
+  last_login_at: string | null;
   created_at: string;
 };
-export type OrderInput = { customer_id: number; product_id: number; quantity: number };
 
-/** Allowed status changes. Cancelled and delivered are final. */
-export const NEXT_STATUSES: Record<OrderStatus, OrderStatus[]> = {
-  pending: ['shipped', 'cancelled'],
-  shipped: ['delivered', 'cancelled'],
-  delivered: [],
-  cancelled: [],
-};
+const like = (search: string) => `%${search.trim()}%`;
 
-// Orders that still hold stock; cancelling or deleting them returns it.
-const RESERVES_STOCK: OrderStatus[] = ['pending', 'shipped'];
+// ---- Lookups ----
 
-// ---- Categories ----
-
-export function listCategories(db: SQLiteDatabase) {
-  return db.getAllAsync<Category>('SELECT id, name FROM categories ORDER BY name');
-}
-
-// ---- Products ----
-
-export function listProducts(db: SQLiteDatabase, search = '') {
-  const like = `%${search.trim()}%`;
-  return db.getAllAsync<Product>(
-    `SELECT p.*, c.name AS category_name
-     FROM products p LEFT JOIN categories c ON c.id = p.category_id
-     WHERE p.name LIKE ? OR p.sku LIKE ? OR c.name LIKE ?
-     ORDER BY p.name`,
-    like, like, like
+export function listCategories(db: SQLiteDatabase, includeInactive = false) {
+  return db.getAllAsync<Category>(
+    `SELECT c.*, (SELECT COUNT(*) FROM medicines m WHERE m.category_id = c.category_id) AS medicine_count
+     FROM categories c WHERE ? OR c.is_active = 1 ORDER BY c.category_name`,
+    includeInactive ? 1 : 0
   );
 }
 
-export async function createProduct(db: SQLiteDatabase, input: ProductInput) {
-  const result = await db.runAsync(
-    'INSERT INTO products (name, sku, category_id, price, quantity) VALUES (?, ?, ?, ?, ?)',
-    input.name, input.sku, input.category_id, input.price, input.quantity
-  );
-  return result.lastInsertRowId;
-}
-
-export async function updateProduct(db: SQLiteDatabase, id: number, input: ProductInput) {
-  await db.runAsync(
-    'UPDATE products SET name = ?, sku = ?, category_id = ?, price = ?, quantity = ? WHERE id = ?',
-    input.name, input.sku, input.category_id, input.price, input.quantity, id
+export function listSuppliers(db: SQLiteDatabase, includeInactive = false) {
+  return db.getAllAsync<Supplier>(
+    `SELECT s.*, (SELECT COUNT(*) FROM medicine_batches b WHERE b.supplier_id = s.supplier_id) AS batch_count
+     FROM suppliers s WHERE ? OR s.is_active = 1 ORDER BY s.supplier_name`,
+    includeInactive ? 1 : 0
   );
 }
 
-export async function deleteProduct(db: SQLiteDatabase, id: number) {
-  await db.runAsync('DELETE FROM products WHERE id = ?', id);
+// ---- Medicines ----
+
+export type MedicineFilter = 'all' | 'low' | 'out' | 'rx' | 'inactive';
+
+export function listMedicines(db: SQLiteDatabase, opts: { search?: string; categoryId?: number | null; filter?: MedicineFilter } = {}) {
+  const filter = opts.filter ?? 'all';
+  return db.getAllAsync<Medicine>(
+    `SELECT * FROM v_medicine_stock
+     WHERE (brand_name LIKE ? OR generic_name LIKE ? OR IFNULL(barcode, '') LIKE ?)
+       AND (? IS NULL OR category_id = ?)
+       AND CASE ?
+             WHEN 'inactive' THEN is_active = 0
+             WHEN 'low' THEN is_active = 1 AND stock_state IN ('LOW', 'OUT')
+             WHEN 'out' THEN is_active = 1 AND stock_state = 'OUT'
+             WHEN 'rx' THEN is_active = 1 AND requires_prescription = 1
+             ELSE is_active = 1
+           END
+     ORDER BY brand_name, strength`,
+    like(opts.search ?? ''), like(opts.search ?? ''), like(opts.search ?? ''),
+    opts.categoryId ?? null, opts.categoryId ?? null, filter
+  );
+}
+
+export function getMedicine(db: SQLiteDatabase, id: number) {
+  return db.getFirstAsync<Medicine>('SELECT * FROM v_medicine_stock WHERE medicine_id = ?', id);
+}
+
+export function findByBarcode(db: SQLiteDatabase, barcode: string) {
+  return db.getFirstAsync<Medicine>('SELECT * FROM v_medicine_stock WHERE barcode = ? AND is_active = 1', barcode.trim());
+}
+
+// ---- Inventory ----
+
+export type BatchView = 'all' | 'sellable' | 'near' | 'expired' | 'quarantined' | 'depleted';
+
+export function listBatches(db: SQLiteDatabase, opts: { search?: string; view?: BatchView; medicineId?: number } = {}) {
+  return db.getAllAsync<Batch>(
+    `SELECT * FROM v_batch_status
+     WHERE (brand_name LIKE ? OR generic_name LIKE ? OR batch_number LIKE ?)
+       AND (? IS NULL OR medicine_id = ?)
+       AND CASE ?
+             WHEN 'sellable' THEN is_sellable = 1
+             WHEN 'near' THEN batch_state = 'NEAR_EXPIRY'
+             WHEN 'expired' THEN batch_state = 'EXPIRED'
+             WHEN 'quarantined' THEN batch_state = 'QUARANTINED'
+             WHEN 'depleted' THEN batch_state = 'DEPLETED'
+             ELSE 1
+           END
+     ORDER BY CASE batch_state WHEN 'EXPIRED' THEN 0 WHEN 'NEAR_EXPIRY' THEN 1 WHEN 'QUARANTINED' THEN 2
+                               WHEN 'SELLABLE' THEN 3 ELSE 4 END,
+              expiry_date, brand_name`,
+    like(opts.search ?? ''), like(opts.search ?? ''), like(opts.search ?? ''),
+    opts.medicineId ?? null, opts.medicineId ?? null, opts.view ?? 'all'
+  );
+}
+
+export function getBatch(db: SQLiteDatabase, id: number) {
+  return db.getFirstAsync<Batch>('SELECT * FROM v_batch_status WHERE batch_id = ?', id);
+}
+
+export function listMovements(db: SQLiteDatabase, opts: { batchId?: number; medicineId?: number; limit?: number } = {}) {
+  return db.getAllAsync<Movement>(
+    `SELECT sm.movement_id, sm.batch_id, b.batch_number, m.brand_name, sm.movement_type, sm.quantity_change,
+            sm.reason, sm.movement_date, u.full_name AS user_name, o.order_number
+     FROM stock_movements sm
+     JOIN medicine_batches b ON b.batch_id = sm.batch_id
+     JOIN medicines m ON m.medicine_id = b.medicine_id
+     JOIN users u ON u.user_id = sm.user_id
+     LEFT JOIN order_items oi ON oi.order_item_id = sm.order_item_id
+     LEFT JOIN orders o ON o.order_id = oi.order_id
+     WHERE (? IS NULL OR sm.batch_id = ?) AND (? IS NULL OR b.medicine_id = ?)
+     ORDER BY sm.movement_date DESC, sm.movement_id DESC
+     LIMIT ?`,
+    opts.batchId ?? null, opts.batchId ?? null, opts.medicineId ?? null, opts.medicineId ?? null, opts.limit ?? 200
+  );
 }
 
 // ---- Customers ----
 
 export function listCustomers(db: SQLiteDatabase, search = '') {
-  const like = `%${search.trim()}%`;
   return db.getAllAsync<Customer>(
     `SELECT c.*,
-            COUNT(o.id) AS order_count,
-            COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.total END), 0) AS total_spent
-     FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
-     WHERE c.name LIKE ? OR c.email LIKE ? OR c.city LIKE ?
-     GROUP BY c.id
-     ORDER BY c.name`,
-    like, like, like
+            COUNT(s.order_id) AS order_count,
+            IFNULL(SUM(s.net_amount), 0) AS total_spent,
+            MAX(s.completed_at) AS last_visit
+     FROM customers c LEFT JOIN v_sales s ON s.customer_id = c.customer_id
+     WHERE c.full_name LIKE ? OR IFNULL(c.phone, '') LIKE ? OR IFNULL(c.email, '') LIKE ?
+     GROUP BY c.customer_id
+     ORDER BY c.full_name`,
+    like(search), like(search), like(search)
   );
-}
-
-export async function createCustomer(db: SQLiteDatabase, input: CustomerInput) {
-  const result = await db.runAsync(
-    'INSERT INTO customers (name, email, phone, city) VALUES (?, ?, ?, ?)',
-    input.name, input.email, input.phone, input.city
-  );
-  return result.lastInsertRowId;
-}
-
-export async function updateCustomer(db: SQLiteDatabase, id: number, input: CustomerInput) {
-  await db.runAsync(
-    'UPDATE customers SET name = ?, email = ?, phone = ?, city = ? WHERE id = ?',
-    input.name, input.email, input.phone, input.city, id
-  );
-}
-
-export async function deleteCustomer(db: SQLiteDatabase, id: number) {
-  await db.runAsync('DELETE FROM customers WHERE id = ?', id);
 }
 
 // ---- Orders ----
 
-export function listOrders(db: SQLiteDatabase, status: OrderStatus | 'all' = 'all') {
-  return db.getAllAsync<Order>(
-    `SELECT o.*, c.name AS customer_name, p.name AS product_name
+export type OrderFilter = { status?: OrderStatus | 'all'; userId?: number | null; customerId?: number | null; search?: string; days?: number | null };
+
+export function listOrders(db: SQLiteDatabase, f: OrderFilter = {}) {
+  return db.getAllAsync<OrderSummary>(
+    `SELECT o.*, cu.full_name AS customer_name, u.full_name AS staff_name,
+            (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.order_id) AS item_count
      FROM orders o
-     JOIN customers c ON c.id = o.customer_id
-     JOIN products p ON p.id = o.product_id
-     WHERE ? = 'all' OR o.status = ?
-     ORDER BY o.created_at DESC, o.id DESC`,
-    status, status
+     JOIN users u ON u.user_id = o.user_id
+     LEFT JOIN customers cu ON cu.customer_id = o.customer_id
+     WHERE (? = 'all' OR o.status = ?)
+       AND (? IS NULL OR o.user_id = ?)
+       AND (? IS NULL OR o.customer_id = ?)
+       AND (o.order_number LIKE ? OR IFNULL(cu.full_name, '') LIKE ?)
+       AND (? IS NULL OR o.created_at >= datetime('now', 'localtime', '-' || ? || ' days'))
+     ORDER BY o.created_at DESC, o.order_id DESC
+     LIMIT 300`,
+    f.status ?? 'all', f.status ?? 'all',
+    f.userId ?? null, f.userId ?? null,
+    f.customerId ?? null, f.customerId ?? null,
+    like(f.search ?? ''), like(f.search ?? ''),
+    f.days ?? null, f.days ?? null
   );
 }
 
-/** Creates an order and takes the quantity out of stock, atomically. */
-export async function createOrder(db: SQLiteDatabase, input: OrderInput) {
-  await db.withTransactionAsync(async () => {
-    const product = await db.getFirstAsync<{ name: string; price: number; quantity: number }>(
-      'SELECT name, price, quantity FROM products WHERE id = ?',
-      input.product_id
-    );
-    if (!product) throw new Error('The selected product no longer exists.');
-    if (product.quantity < input.quantity) {
-      throw new Error(`Only ${product.quantity} unit(s) of "${product.name}" left in stock.`);
-    }
-    const total = Math.round(product.price * input.quantity * 100) / 100;
-    await db.runAsync(
-      'INSERT INTO orders (customer_id, product_id, quantity, total) VALUES (?, ?, ?, ?)',
-      input.customer_id, input.product_id, input.quantity, total
-    );
-    await db.runAsync('UPDATE products SET quantity = quantity - ? WHERE id = ?', input.quantity, input.product_id);
-  });
+export async function getOrderDetail(db: SQLiteDatabase, orderId: number) {
+  const order = await db.getFirstAsync<OrderSummary>(
+    `SELECT o.*, cu.full_name AS customer_name, u.full_name AS staff_name,
+            (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.order_id) AS item_count
+     FROM orders o JOIN users u ON u.user_id = o.user_id LEFT JOIN customers cu ON cu.customer_id = o.customer_id
+     WHERE o.order_id = ?`,
+    orderId
+  );
+  const lines = await db.getAllAsync<OrderLine>(
+    `SELECT oi.*, m.brand_name || IFNULL(' ' || m.strength, '') AS label, p.prescriber_name,
+            (SELECT GROUP_CONCAT(b.batch_number || ' ×' || (-sm.quantity_change), ', ')
+             FROM stock_movements sm JOIN medicine_batches b ON b.batch_id = sm.batch_id
+             WHERE sm.order_item_id = oi.order_item_id AND sm.movement_type = 'SALE') AS batches
+     FROM order_items oi
+     JOIN medicines m ON m.medicine_id = oi.medicine_id
+     LEFT JOIN prescriptions p ON p.prescription_id = oi.prescription_id
+     WHERE oi.order_id = ?
+     ORDER BY oi.order_item_id`,
+    orderId
+  );
+  return order ? { order, lines } : null;
 }
 
-export async function setOrderStatus(db: SQLiteDatabase, order: Order, status: OrderStatus) {
-  if (!NEXT_STATUSES[order.status].includes(status)) {
-    throw new Error(`An order that is ${order.status} cannot be marked ${status}.`);
-  }
-  await db.withTransactionAsync(async () => {
-    await db.runAsync('UPDATE orders SET status = ? WHERE id = ?', status, order.id);
-    if (status === 'cancelled') {
-      await db.runAsync('UPDATE products SET quantity = quantity + ? WHERE id = ?', order.quantity, order.product_id);
-    }
-  });
-}
+// ---- Users ----
 
-export async function deleteOrder(db: SQLiteDatabase, order: Order) {
-  await db.withTransactionAsync(async () => {
-    await db.runAsync('DELETE FROM orders WHERE id = ?', order.id);
-    if (RESERVES_STOCK.includes(order.status)) {
-      await db.runAsync('UPDATE products SET quantity = quantity + ? WHERE id = ?', order.quantity, order.product_id);
-    }
-  });
+export function listUsers(db: SQLiteDatabase) {
+  return db.getAllAsync<User>(
+    'SELECT user_id, full_name, username, role, is_active, last_login_at, created_at FROM users ORDER BY is_active DESC, full_name'
+  );
 }
 
 // ---- Dashboard ----
 
 export type DashboardStats = {
-  products: number;
-  customers: number;
-  orders: number;
-  pending: number;
-  revenue: number;
-  inventoryValue: number;
+  today_net: number;
+  today_orders: number;
+  active_medicines: number;
+  sellable_units: number;
+  low_stock: number;
+  near_expiry: number;
+  expired: number;
+  inventory_value: number;
 };
 
-export async function getDashboard(db: SQLiteDatabase) {
+export async function getDashboard(db: SQLiteDatabase, userId: number | null = null) {
   const stats = await db.getFirstAsync<DashboardStats>(
     `SELECT
-       (SELECT COUNT(*) FROM products) AS products,
-       (SELECT COUNT(*) FROM customers) AS customers,
-       (SELECT COUNT(*) FROM orders) AS orders,
-       (SELECT COUNT(*) FROM orders WHERE status = 'pending') AS pending,
-       (SELECT COALESCE(SUM(total), 0) FROM orders WHERE status != 'cancelled') AS revenue,
-       (SELECT COALESCE(SUM(price * quantity), 0) FROM products) AS inventoryValue`
+       (SELECT IFNULL(SUM(net_amount), 0) FROM v_sales WHERE sale_date = date('now', 'localtime') AND (?1 IS NULL OR user_id = ?1)) AS today_net,
+       (SELECT COUNT(*) FROM v_sales WHERE sale_date = date('now', 'localtime') AND (?1 IS NULL OR user_id = ?1)) AS today_orders,
+       (SELECT COUNT(*) FROM medicines WHERE is_active = 1) AS active_medicines,
+       (SELECT IFNULL(SUM(sellable_stock), 0) FROM v_medicine_stock WHERE is_active = 1) AS sellable_units,
+       (SELECT COUNT(*) FROM v_medicine_stock WHERE is_active = 1 AND stock_state IN ('LOW', 'OUT')) AS low_stock,
+       (SELECT COUNT(*) FROM v_batch_status WHERE batch_state = 'NEAR_EXPIRY') AS near_expiry,
+       (SELECT COUNT(*) FROM v_batch_status WHERE batch_state = 'EXPIRED') AS expired,
+       (SELECT IFNULL(SUM(quantity_remaining * purchase_price), 0) FROM v_batch_status WHERE is_sellable = 1) AS inventory_value`,
+    userId
   );
-  const lowStock = await db.getAllAsync<Pick<Product, 'id' | 'name' | 'sku' | 'quantity'>>(
-    'SELECT id, name, sku, quantity FROM products WHERE quantity <= ? ORDER BY quantity, name',
-    LOW_STOCK_THRESHOLD
+  const lowStock = await db.getAllAsync<Medicine>(
+    "SELECT * FROM v_medicine_stock WHERE is_active = 1 AND stock_state IN ('LOW', 'OUT') ORDER BY sellable_stock, brand_name LIMIT 8"
   );
-  const recentOrders = await listOrders(db);
-  return { stats: stats!, lowStock, recentOrders: recentOrders.slice(0, 5) };
+  const expiring = await db.getAllAsync<Batch>(
+    "SELECT * FROM v_batch_status WHERE batch_state IN ('EXPIRED', 'NEAR_EXPIRY') ORDER BY expiry_date LIMIT 8"
+  );
+  const recent = await listOrders(db, { userId });
+  return { stats: stats!, lowStock, expiring, recent: recent.slice(0, 6) };
+}
+
+export function integrityIssues(db: SQLiteDatabase) {
+  return db.getAllAsync<{ issue: string; ref: string }>('SELECT * FROM v_integrity_issues');
+}
+
+export async function databaseCounts(db: SQLiteDatabase, tables: string[]) {
+  const counts: Record<string, number> = {};
+  for (const t of tables) {
+    const row = await db.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM "${t}"`);
+    counts[t] = row?.n ?? 0;
+  }
+  return counts;
 }

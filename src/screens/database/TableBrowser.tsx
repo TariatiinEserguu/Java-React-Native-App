@@ -1,5 +1,5 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DataTable } from '../../components/DataTable';
@@ -17,27 +17,22 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
   const db = useSQLiteContext();
   const { notifyChange } = useDataChange();
   const toast = useToast();
-  const [selected, setSelected] = useState<string | null>('products');
-  const [page, setPage] = useState(0);
+  const [chosen, setSelected] = useState<string | null>('medicines');
+  const [chosenPage, setPage] = useState(0);
   const [resetting, setResetting] = useState(false);
 
   const { data: tables, error } = useDbQuery(listTables);
+  // Keep the selection valid when tables are dropped or rows deleted elsewhere.
+  const selected = tables && !tables.some((t) => t.name === chosen) ? (tables[0]?.name ?? null) : chosen;
+  const table = tables?.find((t) => t.name === selected);
+  const pageCount = Math.max(1, Math.ceil((table?.rowCount ?? 0) / PAGE_SIZE));
+  const page = Math.min(chosenPage, pageCount - 1);
+
   const { data: details } = useDbQuery((db) => (selected ? describeTable(db, selected) : Promise.resolve(null)), [selected]);
   const { data: records, error: recordsError } = useDbQuery(
     (db) => (selected ? readTablePage(db, selected, PAGE_SIZE, page * PAGE_SIZE) : Promise.resolve(null)),
     [selected, page]
   );
-
-  const table = tables?.find((t) => t.name === selected);
-  const pageCount = Math.max(1, Math.ceil((table?.rowCount ?? 0) / PAGE_SIZE));
-
-  // Keep the selection valid when tables are dropped or rows deleted elsewhere.
-  useEffect(() => {
-    if (tables && selected && !table) setSelected(tables[0]?.name ?? null);
-  }, [tables, selected, table]);
-  useEffect(() => {
-    if (page > pageCount - 1) setPage(pageCount - 1);
-  }, [page, pageCount]);
 
   const select = (name: string) => {
     setSelected(name);
@@ -109,11 +104,11 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
           {recordsError ? <ErrorBanner message={recordsError} /> : null}
           {records ? <DataTable columns={records.columns} rows={records.rows} /> : null}
           <View style={styles.pager}>
-            <Button title="‹ Prev" variant="secondary" small disabled={page === 0} onPress={() => setPage((p) => p - 1)} />
+            <Button title="‹ Prev" variant="secondary" small disabled={page === 0} onPress={() => setPage(page - 1)} />
             <Text style={styles.pageText}>
               Page {page + 1} of {pageCount} · {table.rowCount ?? '?'} rows
             </Text>
-            <Button title="Next ›" variant="secondary" small disabled={page >= pageCount - 1} onPress={() => setPage((p) => p + 1)} />
+            <Button title="Next ›" variant="secondary" small disabled={page >= pageCount - 1} onPress={() => setPage(page + 1)} />
           </View>
         </>
       ) : null}

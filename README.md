@@ -1,72 +1,80 @@
-# Java-React-Native-App — Inventory Manager (prototype)
+# PharmaCare — offline pharmacy app (Expo + SQLite)
 
-A local-only React Native (Expo) prototype for managing **products, customers and orders**, backed by an
-on-device **SQLite** database, with a built-in **SQL editor** and **table browser**.
+A mobile pharmacy management prototype for Android and iOS. It runs fully **offline** and stores everything in a
+local **SQLite** database on the phone: medicine catalogue, batch inventory with expiry dates, customers,
+prescriptions, sales, refunds and an append-only stock ledger.
 
-> Prototype scope: no backend, authentication, deployment or CI. All data lives in a local SQLite file
-> (`inventory.db`) on the device/emulator (or in the browser's private storage on web).
+📄 **Design documents** (ERD, data dictionary, UML diagrams, UI, business rules, reports, tests): [`docs/`](docs/README.md)
+
+> Prototype: no server, no cloud sync. Each device has its own database (`pharmacare.db` in the app's private
+> storage, or the browser's storage on web). Before real pharmacy use, the dispensing workflow must follow local law.
 
 ## Requirements
 
-- Node.js 20+ and npm
-- One of:
-  - Android emulator (Android Studio) or a phone with the **Expo Go** app
-  - iOS simulator (macOS + Xcode)
-  - A modern desktop browser (Chrome/Edge/Firefox) for the web build
+- Node.js 22+ and npm
+- An Android phone with **Expo Go**, an Android emulator, an iOS simulator (macOS), or a desktop browser
 
 ## Run it
 
 ```bash
 npm install
-npx expo start          # then press  a = Android,  i = iOS,  w = web
-# or directly:
-npm run android
-npm run web
+npx expo start          # then press a = Android, i = iOS, w = web
 ```
 
 With Expo Go on a phone, scan the QR code shown by `npx expo start` (phone and computer on the same network).
 
-Type-check: `npm run typecheck`
+### Demo accounts
 
-## What's inside
+| Role | Username | Password |
+| --- | --- | --- |
+| Administrator | `admin` | `admin123` |
+| Pharmacist | `pharmacist` | `pharm123` |
+| Cashier | `cashier` | `cashier123` |
 
-| Tab | What it demonstrates |
+## Checks
+
+```bash
+npm test             # 22 backend tests: real schema, triggers, services and reports on Node's built-in SQLite
+npm run typecheck    # TypeScript (app + tests)
+npm run lint         # ESLint (expo lint)
+```
+
+## Features
+
+| Tab | What it does |
 | --- | --- |
-| **Overview** | Live stats computed with SQL (counts, revenue, stock value), low-stock list, recent orders table |
-| **Products** | Search, create / edit / delete with validation (unique SKU, price ≥ 0, whole-number stock), category picker |
-| **Customers** | Search, create / edit / delete with email/phone validation; order count & total spent via `JOIN`/`GROUP BY` |
-| **Orders** | Create orders (stock is checked and decremented in a transaction), ship → deliver / cancel (restocks), delete, status filter |
-| **Database** | **SQL Editor**: run any SQL (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `PRAGMA`, multiple statements), results grid with column names and row counts, rows-affected / last-insert-id, timing, readable errors, example queries, persisted query history. **Table Browser**: every table/view with row counts, column schema, foreign keys, `CREATE` statement, paged records, "Reset to sample data" |
+| **Dashboard** | Today's sales, sellable units, low-stock, near-expiry and expired alerts, stock value, recent sales — all from SQL |
+| **Medicines** | Search by brand / generic name / barcode, filter by category or stock state, add / edit / deactivate, see batches |
+| **Sell** | Cart, FEFO batch allocation, prescription check for Rx-only items, discounts, payment method, receipt |
+| **Inventory** | Batches by expiry state, receive stock, adjust, write off, quarantine, full movement log |
+| **More** | Orders & refunds, customers, suppliers, categories, 11 reports, staff accounts, settings, backup/restore, integrity check, SQL console |
 
-Every write — from a form or from the SQL editor — triggers a refresh of all screens, so the lists, the
-dashboard and the table browser always show what is actually stored.
+## The SQL backend
 
-### Database schema
-
-`categories`, `products` (→ categories), `customers`, `orders` (→ customers, products) and `query_history`.
-The schema and realistic sample data are created on first launch (`src/db/schema.ts`, `src/db/seed.ts`).
-Foreign keys are enforced, so e.g. deleting a customer who still has orders is refused with a clear message.
-
-## Demo script (≈2 minutes)
-
-1. **Overview** — note the counts and the low-stock list.
-2. **Products → + Add** — try saving with an empty name or a duplicate SKU such as `EL-1001` to see validation; then add a real product.
-3. **Orders → + New order** — pick a customer and product, set a quantity; the product's stock drops. Mark it shipped, then cancel another order and watch stock return.
-4. **Database → SQL Editor** — tap the *Orders with names (JOIN)* example and **Run**. Then run *UPDATE restock* and switch to **Products**: the quantities have changed.
-5. Run the *CREATE TABLE* example (three statements), open **Table Browser** and select `suppliers` to inspect its schema and records.
-6. Run *Error example* to see a readable error. Tap any entry under **History** to load it again.
-7. **Table Browser → Reset** restores the original sample data.
+- **11 tables**: `users`, `categories`, `medicines`, `suppliers`, `medicine_batches`, `customers`, `prescriptions`,
+  `orders`, `order_items`, `stock_movements`, `app_settings` (+ `query_history` for the SQL console).
+- **Constraints**: foreign keys (enforced on every connection), `CHECK` constraints for money, quantities, dates,
+  enums and sign conventions, `UNIQUE` indexes.
+- **Triggers** enforce the important business rules inside SQLite, so they hold even for SQL typed into the console:
+  the stock ledger is append-only and keeps `quantity_remaining` in step; expired or quarantined batches can't be
+  sold; stock can't be deducted twice; completed orders can't be edited or deleted; Rx-only items need a prescription
+  verified by a pharmacist; the order status follows a state machine; the last admin can't be removed.
+- **Views**: `v_batch_status`, `v_medicine_stock`, `v_sales`, `v_line_cost`, `v_integrity_issues`.
+- **Transactions**: checkout, refunds, receiving, adjustments and write-offs are each all-or-nothing.
+- **Passwords**: PBKDF2-HMAC-SHA256 with per-user salt.
 
 ## Project structure
 
 ```
-App.tsx                      app shell, bottom tabs, SQLiteProvider
-metro.config.js              wasm + COOP/COEP headers so expo-sqlite works on web
-src/db/schema.ts             schema, migration (PRAGMA user_version), reset
-src/db/seed.ts               sample data
-src/db/repository.ts         typed CRUD queries for the app screens
-src/db/sqlRunner.ts          SQL editor engine, query history, schema browser queries
-src/db/DataContext.tsx       change notifications + useDbQuery hook
-src/screens/                 Overview, Products, Customers, Orders, database/ (editor + browser)
-src/components/              buttons, fields, modal form, select, data table, toasts
+App.tsx                    app shell: SQLiteProvider, login gate, bottom tabs
+src/db/schema.ts           tables, constraints, indexes, triggers, views, migration (PRAGMA user_version)
+src/db/seed.ts             demo data (goes through the same service functions as the app)
+src/db/repository.ts       read queries for the screens
+src/db/reports.ts          report queries
+src/db/transaction.ts      serialised transactions on the main connection
+src/services/              business logic + permission checks: sales, inventory, catalog, users, settings, backup, password
+src/screens/               Login, Dashboard, Medicines, Sell, Inventory, more/ (Orders, people, Reports, Settings), database/ (SQL console)
+src/components/            buttons, fields, sheets, select, data table, toasts, form hooks
+tests/                     backend tests on node:sqlite
+docs/                      design documentation (ERD, diagrams, rules, tests)
 ```

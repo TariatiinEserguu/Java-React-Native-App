@@ -11,7 +11,7 @@ type Mode = 'editor' | 'browser';
 
 export function DatabaseScreen() {
   const [mode, setMode] = useState<Mode>('editor');
-  const [sql, setSql] = useState('SELECT * FROM products ORDER BY name;');
+  const [sql, setSql] = useState('SELECT * FROM v_medicine_stock ORDER BY brand_name;');
 
   return (
     <ScrollView contentContainerStyle={screen.content} keyboardShouldPersistTaps="handled">
