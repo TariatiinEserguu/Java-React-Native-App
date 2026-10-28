@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { runInTransaction } from '../db/transaction';
 import { AppError, assertCan, type SessionUser } from './permissions';
 import { Checker } from './validate';
+import { t } from '../i18n/core';
 
 // Stock receiving, adjustments, write-offs and quarantine. Every quantity change is a row in
 // stock_movements; the trg_movement_apply trigger keeps medicine_batches.quantity_remaining in step.
@@ -27,16 +28,16 @@ export async function receiveBatch(db: SQLiteDatabase, actor: SessionUser, input
   assertCan(actor, 'stock.receive');
   const now = await today(db);
   const c = new Checker();
-  if (!input.medicine_id) c.fail('medicine_id', 'Choose a medicine.');
+  if (!input.medicine_id) c.fail('medicine_id', t('validate.chooseMedicine'));
   const value = {
-    batch_number: c.text('batch_number', input.batch_number, 'Batch number', 1, 40).toUpperCase(),
-    quantity: c.int('quantity', input.quantity, 'Quantity', { min: 1, max: 1_000_000 }),
-    purchase_price: c.int('purchase_price', input.purchase_price, 'Purchase price'),
-    expiry_date: c.date('expiry_date', input.expiry_date, 'Expiry date'),
-    received_date: c.date('received_date', input.received_date ?? now, 'Received date'),
+    batch_number: c.text('batch_number', input.batch_number, t('field.batchNumber'), 1, 40).toUpperCase(),
+    quantity: c.int('quantity', input.quantity, t('field.quantity'), { min: 1, max: 1_000_000 }),
+    purchase_price: c.int('purchase_price', input.purchase_price, t('field.purchasePrice')),
+    expiry_date: c.date('expiry_date', input.expiry_date, t('field.expiryDate')),
+    received_date: c.date('received_date', input.received_date ?? now, t('field.receivedDate')),
   };
-  if (!c.errors.received_date && value.received_date > now) c.fail('received_date', 'Received date cannot be in the future.');
-  if (!c.errors.expiry_date && value.expiry_date <= now) c.fail('expiry_date', 'This batch is already expired. Expiry must be after today.');
+  if (!c.errors.received_date && value.received_date > now) c.fail('received_date', t('validate.receivedFuture'));
+  if (!c.errors.expiry_date && value.expiry_date <= now) c.fail('expiry_date', t('validate.alreadyExpired'));
   c.done();
 
   return runInTransaction(db, (tx) => insertBatch(tx, actor.user_id, { ...value, medicine_id: input.medicine_id!, supplier_id: input.supplier_id }));
@@ -58,8 +59,8 @@ export async function insertBatch(
   }
 ) {
   const medicine = await tx.getFirstAsync<{ is_active: number }>('SELECT is_active FROM medicines WHERE medicine_id = ?', b.medicine_id);
-  if (!medicine) throw new AppError('The selected medicine no longer exists.');
-  if (!medicine.is_active) throw new AppError('This medicine is inactive. Reactivate it before receiving stock.');
+  if (!medicine) throw new AppError(t('inventory.medicineGone'));
+  if (!medicine.is_active) throw new AppError(t('inventory.medicineInactive'));
 
   const result = await tx.runAsync(
     `INSERT INTO medicine_batches (medicine_id, supplier_id, batch_number, purchase_price, quantity_received,
@@ -80,7 +81,7 @@ async function loadBatch(tx: SQLiteDatabase, batchId: number) {
     'SELECT quantity_remaining, quantity_received FROM medicine_batches WHERE batch_id = ?',
     batchId
   );
-  if (!batch) throw new AppError('This batch no longer exists.');
+  if (!batch) throw new AppError(t('inventory.batchGone'));
   return batch;
 }
 
@@ -92,17 +93,17 @@ export async function adjustStock(
 ) {
   assertCan(actor, 'stock.adjust');
   const c = new Checker();
-  const change = c.int('quantity_change', input.quantity_change, 'Change', { min: -1_000_000, max: 1_000_000 });
-  if (change === 0) c.fail('quantity_change', 'Enter a positive or negative number, not 0.');
-  const reason = c.text('reason', input.reason, 'Reason', 3, 200);
+  const change = c.int('quantity_change', input.quantity_change, t('field.change'), { min: -1_000_000, max: 1_000_000 });
+  if (change === 0) c.fail('quantity_change', t('validate.nonZero'));
+  const reason = c.text('reason', input.reason, t('field.reason'), 3, 200);
   c.done();
 
   await runInTransaction(db, async (tx) => {
     const batch = await loadBatch(tx, input.batch_id);
     const after = batch.quantity_remaining + change;
-    if (after < 0) throw new AppError(`Only ${batch.quantity_remaining} in this batch; it can't go below 0.`);
+    if (after < 0) throw new AppError(t('inventory.belowZero', { count: batch.quantity_remaining }));
     if (after > batch.quantity_received) {
-      throw new AppError(`A batch can't hold more than the ${batch.quantity_received} received.`);
+      throw new AppError(t('inventory.aboveReceived', { count: batch.quantity_received }));
     }
     await tx.runAsync(
       "INSERT INTO stock_movements (batch_id, user_id, movement_type, quantity_change, reason) VALUES (?, ?, 'ADJUSTMENT', ?, ?)",
@@ -119,13 +120,13 @@ export async function writeOffStock(
 ) {
   assertCan(actor, 'stock.adjust');
   const c = new Checker();
-  const quantity = c.int('quantity', input.quantity, 'Quantity', { min: 1, max: 1_000_000 });
-  const reason = c.text('reason', input.reason, 'Reason', 3, 200);
+  const quantity = c.int('quantity', input.quantity, t('field.quantity'), { min: 1, max: 1_000_000 });
+  const reason = c.text('reason', input.reason, t('field.reason'), 3, 200);
   c.done();
 
   await runInTransaction(db, async (tx) => {
     const batch = await loadBatch(tx, input.batch_id);
-    if (quantity > batch.quantity_remaining) throw new AppError(`Only ${batch.quantity_remaining} left in this batch.`);
+    if (quantity > batch.quantity_remaining) throw new AppError(t('inventory.onlyLeft', { count: batch.quantity_remaining }));
     await tx.runAsync(
       "INSERT INTO stock_movements (batch_id, user_id, movement_type, quantity_change, reason) VALUES (?, ?, 'WRITE_OFF', ?, ?)",
       input.batch_id, actor.user_id, -quantity, reason

@@ -1,8 +1,8 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
-import { confirmAction } from '../components/feedback';
+import { confirmAction, useToast } from '../components/feedback';
 import { FormModal } from '../components/FormModal';
 import { useAction, useSubmit } from '../components/hooks';
 import { SelectField } from '../components/SelectField';
@@ -17,6 +17,7 @@ import {
   Field,
   KeyValue,
   ListItem,
+  LoadingState,
   ScreenHeader,
   SearchBar,
   SectionTitle,
@@ -26,19 +27,20 @@ import {
 } from '../components/ui';
 import { useDbQuery } from '../db/DataContext';
 import { getBatch, listBatches, listMedicines, listMovements, listSuppliers, type Batch, type BatchState, type BatchView } from '../db/repository';
-import { daysLabel, dateTime, medicineLabel, money, todayIso } from '../format';
+import { daysLabel, dateTime, formatNumber, medicineLabel, money, shortDate, todayIso } from '../format';
+import { useI18n, type TranslationKey } from '../i18n';
 import { adjustStock, receiveBatch, setBatchActive, writeOffStock } from '../services/inventory';
 import { can } from '../services/permissions';
 import { useUser } from '../session';
-import { colors } from '../theme';
+import { makeStyles, useTheme } from '../theme';
 
-const VIEWS: [BatchView, string][] = [
-  ['all', 'All'],
-  ['sellable', 'Sellable'],
-  ['near', 'Near expiry'],
-  ['expired', 'Expired'],
-  ['quarantined', 'Quarantined'],
-  ['depleted', 'Empty'],
+const VIEWS: [BatchView, TranslationKey][] = [
+  ['all', 'inventory.view.all'],
+  ['sellable', 'inventory.view.sellable'],
+  ['near', 'inventory.view.near'],
+  ['expired', 'inventory.view.expired'],
+  ['quarantined', 'inventory.view.quarantined'],
+  ['depleted', 'inventory.view.depleted'],
 ];
 
 export const batchTone: Record<BatchState, BadgeTone> = {
@@ -47,14 +49,6 @@ export const batchTone: Record<BatchState, BadgeTone> = {
   EXPIRED: 'danger',
   QUARANTINED: 'info',
   DEPLETED: 'neutral',
-};
-
-export const batchLabel: Record<BatchState, string> = {
-  SELLABLE: 'Sellable',
-  NEAR_EXPIRY: 'Near expiry',
-  EXPIRED: 'Expired',
-  QUARANTINED: 'Quarantined',
-  DEPLETED: 'Empty',
 };
 
 const movementTone = { RECEIPT: 'success', SALE: 'neutral', RETURN: 'info', ADJUSTMENT: 'warning', WRITE_OFF: 'danger' } as const;
@@ -70,6 +64,9 @@ const emptyReceive = () => ({
 });
 
 export function InventoryScreen() {
+  const { t } = useI18n();
+  const styles = useStyles();
+  const { colors } = useTheme();
   const user = useUser();
   const canReceive = can(user, 'stock.receive');
   const [view, setView] = useState<BatchView>('all');
@@ -83,14 +80,14 @@ export function InventoryScreen() {
   return (
     <ScrollView contentContainerStyle={screen.content} keyboardShouldPersistTaps="handled">
       <ScreenHeader
-        title="Inventory"
-        subtitle="Stock by batch and expiry date"
-        action={canReceive ? <Button title="+ Receive" onPress={() => setReceiving(true)} /> : undefined}
+        title={t('inventory.title')}
+        subtitle={t('inventory.subtitle')}
+        action={canReceive ? <Button title={t('inventory.receive')} icon="add" onPress={() => setReceiving(true)} /> : undefined}
       />
       <Segmented
         options={[
-          ['batches', 'Batches'],
-          ['log', 'Movement log'],
+          ['batches', t('inventory.tab.batches')],
+          ['log', t('inventory.tab.log')],
         ]}
         value={mode}
         onChange={setMode}
@@ -99,32 +96,34 @@ export function InventoryScreen() {
 
       {mode === 'batches' ? (
         <>
-          <SearchBar value={search} onChangeText={setSearch} placeholder="Search medicine or batch number…" />
+          <SearchBar value={search} onChangeText={setSearch} placeholder={t('inventory.search')} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
             {VIEWS.map(([key, label]) => (
-              <Chip key={key} label={label} active={view === key} onPress={() => setView(key)} />
+              <Chip key={key} label={t(label)} active={view === key} onPress={() => setView(key)} />
             ))}
           </ScrollView>
-          {batches?.length === 0 ? <EmptyState text="No batches in this view." /> : null}
+          {!batches && !error ? <LoadingState /> : null}
+          {batches?.length === 0 ? <EmptyState icon="cube-outline" text={t('inventory.empty')} hint={t('inventory.emptyHint')} /> : null}
           {batches?.map((b) => (
             <ListItem key={b.batch_id} onPress={() => setSelected(b.batch_id)}>
               <View style={styles.top}>
                 <Text style={styles.name}>{medicineLabel(b)}</Text>
                 <View style={{ flex: 1 }} />
-                <Badge label={batchLabel[b.batch_state]} tone={batchTone[b.batch_state]} />
+                <Badge label={t(`batch.${b.batch_state}`)} tone={batchTone[b.batch_state]} />
               </View>
               <Text style={styles.muted}>
-                Batch {b.batch_number} · {b.quantity_remaining}/{b.quantity_received} left · {b.supplier_name ?? 'no supplier'}
+                {t('batch.summary', { batch: b.batch_number, left: b.quantity_remaining, received: b.quantity_received, supplier: b.supplier_name ?? t('common.noSupplier') })}
               </Text>
               <Text style={[styles.muted, b.days_to_expiry < 0 && { color: colors.danger }]}>
-                Expires {b.expiry_date} ({daysLabel(b.days_to_expiry)})
+                {t('batch.expires', { date: shortDate(b.expiry_date), days: daysLabel(b.days_to_expiry) })}
               </Text>
             </ListItem>
           ))}
         </>
       ) : (
         <Card style={{ paddingVertical: 4 }}>
-          {log?.length === 0 ? <EmptyState text="No stock movements yet." /> : null}
+          {!log ? <LoadingState /> : null}
+          {log?.length === 0 ? <EmptyState icon="swap-vertical-outline" text={t('inventory.noMovements')} /> : null}
           {log?.map((m) => (
             <View key={m.movement_id} style={styles.logRow}>
               <View style={{ flex: 1 }}>
@@ -137,7 +136,7 @@ export function InventoryScreen() {
                   {m.reason ? ` · ${m.reason}` : ''}
                 </Text>
               </View>
-              <Badge label={`${m.movement_type.replace('_', ' ')} ${m.quantity_change > 0 ? '+' : ''}${m.quantity_change}`} tone={movementTone[m.movement_type]} />
+              <Badge label={`${t(`movement.${m.movement_type}`)} ${m.quantity_change > 0 ? '+' : ''}${m.quantity_change}`} tone={movementTone[m.movement_type]} />
             </View>
           ))}
         </Card>
@@ -150,6 +149,10 @@ export function InventoryScreen() {
 }
 
 function ReceiveForm({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { t } = useI18n();
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const toast = useToast();
   const db = useSQLiteContext();
   const user = useUser();
   const { data: medicines } = useDbQuery((db) => listMedicines(db));
@@ -166,50 +169,56 @@ function ReceiveForm({ visible, onClose }: { visible: boolean; onClose: () => vo
 
   const save = async () => {
     const id = await submit(() => receiveBatch(db, user, form));
-    if (id) close();
+    if (id) {
+      close();
+      toast(t('inventory.received'));
+    }
   };
 
   const medicine = medicines?.find((m) => m.medicine_id === form.medicine_id);
   return (
-    <FormModal visible={visible} title="Receive stock" submitLabel="Save batch" onClose={close} onSubmit={save} submitting={saving} error={error}>
+    <FormModal visible={visible} title={t('inventory.receiveTitle')} submitLabel={t('inventory.saveBatch')} onClose={close} onSubmit={save} submitting={saving} error={error}>
       <SelectField
-        label="Medicine"
+        label={t('field.medicine')}
         value={form.medicine_id}
         onChange={set('medicine_id')}
         error={errors.medicine_id}
-        options={(medicines ?? []).map((m) => ({ value: m.medicine_id, label: medicineLabel(m), detail: `${m.generic_name} · ${m.unit} · ${m.sellable_stock} in stock` }))}
+        options={(medicines ?? []).map((m) => ({ value: m.medicine_id, label: medicineLabel(m), detail: `${m.generic_name} · ${m.unit} · ${t('stock.inStock', { count: m.sellable_stock })}` }))}
       />
       <SelectField
-        label="Supplier"
+        label={t('field.supplier')}
         value={form.supplier_id ?? 0}
         onChange={(v) => set('supplier_id')(v || null)}
-        options={[{ value: 0, label: 'No supplier (opening stock)' }, ...(suppliers ?? []).map((s) => ({ value: s.supplier_id, label: s.supplier_name }))]}
+        options={[{ value: 0, label: t('inventory.noSupplierOpening') }, ...(suppliers ?? []).map((s) => ({ value: s.supplier_id, label: s.supplier_name }))]}
       />
-      <Field label="Batch / lot number" value={form.batch_number} onChangeText={set('batch_number')} error={errors.batch_number} autoCapitalize="characters" />
+      <Field label={t('field.batchLot')} value={form.batch_number} onChangeText={set('batch_number')} error={errors.batch_number} autoCapitalize="characters" />
       <View style={styles.pair}>
         <View style={{ flex: 1 }}>
-          <Field label={`Quantity${medicine ? ` (${medicine.unit})` : ''}`} value={form.quantity} onChangeText={set('quantity')} error={errors.quantity} keyboardType="number-pad" />
+          <Field label={`${t('field.quantity')}${medicine ? ` (${medicine.unit})` : ''}`} value={form.quantity} onChangeText={set('quantity')} error={errors.quantity} keyboardType="number-pad" />
         </View>
         <View style={{ flex: 1 }}>
-          <Field label="Cost per unit (₮)" value={form.purchase_price} onChangeText={set('purchase_price')} error={errors.purchase_price} keyboardType="number-pad" />
+          <Field label={t('field.costPerUnitMnt')} value={form.purchase_price} onChangeText={set('purchase_price')} error={errors.purchase_price} keyboardType="number-pad" />
         </View>
       </View>
       <View style={styles.pair}>
         <View style={{ flex: 1 }}>
-          <Field label="Expiry date" value={form.expiry_date} onChangeText={set('expiry_date')} error={errors.expiry_date} placeholder="YYYY-MM-DD" />
+          <Field label={t('field.expiryDate')} value={form.expiry_date} onChangeText={set('expiry_date')} error={errors.expiry_date} placeholder={t('common.datePlaceholder')} />
         </View>
         <View style={{ flex: 1 }}>
-          <Field label="Received date" value={form.received_date} onChangeText={set('received_date')} error={errors.received_date} placeholder="YYYY-MM-DD" />
+          <Field label={t('field.receivedDate')} value={form.received_date} onChangeText={set('received_date')} error={errors.received_date} placeholder={t('common.datePlaceholder')} />
         </View>
       </View>
       {medicine && Number(form.purchase_price) > medicine.selling_price ? (
-        <Text style={[styles.muted, { color: colors.warning }]}>Cost is higher than the selling price ({money(medicine.selling_price)}).</Text>
+        <Text style={[styles.muted, { color: colors.warning }]}>{t('inventory.costHigh', { price: money(medicine.selling_price) })}</Text>
       ) : null}
     </FormModal>
   );
 }
 
 function BatchDetail({ batchId, onClose }: { batchId: number | null; onClose: () => void }) {
+  const { t } = useI18n();
+  const styles = useStyles();
+  const { colors } = useTheme();
   const db = useSQLiteContext();
   const user = useUser();
   const canAdjust = can(user, 'stock.adjust');
@@ -227,23 +236,23 @@ function BatchDetail({ batchId, onClose }: { batchId: number | null; onClose: ()
   const toggleQuarantine = async () => {
     if (!batch) return;
     const quarantine = !!batch.is_active;
-    if (quarantine && !(await confirmAction('Quarantine batch?', `Batch ${batch.batch_number} will not be sold until it is released.`, 'Quarantine'))) return;
-    await run(() => setBatchActive(db, user, batch.batch_id, !quarantine), quarantine ? 'Batch quarantined' : 'Batch released');
+    if (quarantine && !(await confirmAction(t('batch.quarantineTitle'), t('batch.quarantineBody', { batch: batch.batch_number }), t('batch.quarantine')))) return;
+    await run(() => setBatchActive(db, user, batch.batch_id, !quarantine), quarantine ? t('batch.quarantined') : t('batch.released'));
   };
 
   return (
     <Sheet
       visible={batchId !== null && !!batch}
       title={batch ? medicineLabel(batch) : ''}
-      subtitle={batch ? `Batch ${batch.batch_number}` : undefined}
+      subtitle={batch ? t('batch.number', { batch: batch.batch_number }) : undefined}
       onClose={onClose}
       footer={
         canAdjust && batch ? (
           <>
-            <Button title={batch.is_active ? 'Quarantine' : 'Release'} variant="secondary" small onPress={toggleQuarantine} />
+            <Button title={batch.is_active ? t('batch.quarantine') : t('batch.release')} variant="secondary" small onPress={toggleQuarantine} />
             <View style={{ flex: 1 }} />
-            <Button title="Adjust" variant="secondary" small onPress={() => setAction('adjust')} />
-            <Button title="Write off" variant="danger" small onPress={() => setAction('writeoff')} disabled={batch.quantity_remaining === 0} />
+            <Button title={t('batch.adjust')} variant="secondary" small onPress={() => setAction('adjust')} />
+            <Button title={t('batch.writeOff')} variant="danger" small onPress={() => setAction('writeoff')} disabled={batch.quantity_remaining === 0} />
           </>
         ) : undefined
       }
@@ -251,20 +260,20 @@ function BatchDetail({ batchId, onClose }: { batchId: number | null; onClose: ()
       {batch ? (
         <>
           <Card>
-            <KeyValue label="State" value={batchLabel[batch.batch_state]} strong />
-            <KeyValue label="Remaining / received" value={`${batch.quantity_remaining} / ${batch.quantity_received}`} />
-            <KeyValue label="Expiry" value={`${batch.expiry_date} (${daysLabel(batch.days_to_expiry)})`} />
-            <KeyValue label="Received" value={batch.received_date} />
-            <KeyValue label="Supplier" value={batch.supplier_name ?? '—'} />
-            <KeyValue label="Cost per unit" value={money(batch.purchase_price)} />
-            <KeyValue label="Value at cost" value={money(batch.purchase_price * batch.quantity_remaining)} />
+            <KeyValue label={t('batch.state')} value={t(`batch.${batch.batch_state}`)} strong />
+            <KeyValue label={t('batch.remainingReceived')} value={`${formatNumber(batch.quantity_remaining)} / ${formatNumber(batch.quantity_received)}`} />
+            <KeyValue label={t('batch.expiry')} value={`${shortDate(batch.expiry_date)} (${daysLabel(batch.days_to_expiry)})`} />
+            <KeyValue label={t('batch.receivedOn')} value={shortDate(batch.received_date)} />
+            <KeyValue label={t('field.supplier')} value={batch.supplier_name ?? '—'} />
+            <KeyValue label={t('field.costPerUnit')} value={money(batch.purchase_price)} />
+            <KeyValue label={t('batch.valueAtCost')} value={money(batch.purchase_price * batch.quantity_remaining)} />
           </Card>
-          <SectionTitle>Movement history</SectionTitle>
+          <SectionTitle>{t('batch.history')}</SectionTitle>
           <Card style={{ paddingVertical: 4 }}>
             {data?.movements.map((m) => (
               <View key={m.movement_id} style={styles.logRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{m.movement_type.replace('_', ' ')}</Text>
+                  <Text style={styles.name}>{t(`movement.${m.movement_type}`)}</Text>
                   <Text style={styles.muted}>
                     {dateTime(m.movement_date)} · {m.user_name}
                     {m.order_number ? ` · ${m.order_number}` : ''}
@@ -286,10 +295,13 @@ function BatchDetail({ batchId, onClose }: { batchId: number | null; onClose: ()
 }
 
 function StockChangeForm({ batch, kind, onClose }: { batch: Batch; kind: 'adjust' | 'writeoff' | null; onClose: () => void }) {
+  const { t } = useI18n();
+  const styles = useStyles();
+  const toast = useToast();
   const db = useSQLiteContext();
   const user = useUser();
   const [qty, setQty] = useState('');
-  const [reason, setReason] = useState(kind === 'writeoff' && batch.batch_state === 'EXPIRED' ? 'Expired – destroyed' : '');
+  const [reason, setReason] = useState(kind === 'writeoff' && batch.batch_state === 'EXPIRED' ? t('batch.expiredDestroyed') : '');
   const { errors, error, saving, submit, reset } = useSubmit();
 
   const close = () => {
@@ -305,41 +317,44 @@ function StockChangeForm({ batch, kind, onClose }: { batch: Batch; kind: 'adjust
       else await writeOffStock(db, user, { batch_id: batch.batch_id, quantity: qty, reason });
       return true;
     });
-    if (done) close();
+    if (done) {
+      close();
+      toast(kind === 'adjust' ? t('batch.adjusted') : t('batch.writtenOff'));
+    }
   };
 
   return (
     <FormModal
       visible={kind !== null}
-      title={kind === 'adjust' ? 'Adjust stock' : 'Write off stock'}
-      submitLabel={kind === 'adjust' ? 'Save adjustment' : 'Write off'}
+      title={kind === 'adjust' ? t('batch.adjustTitle') : t('batch.writeOffTitle')}
+      submitLabel={kind === 'adjust' ? t('batch.saveAdjustment') : t('batch.writeOff')}
       onClose={close}
       onSubmit={save}
       submitting={saving}
       error={error}
     >
       <Text style={[styles.muted, { marginBottom: 12 }]}>
-        {batch.quantity_remaining} currently in batch {batch.batch_number}. This adds a new movement; history is never edited.
+        {t('batch.changeIntro', { count: batch.quantity_remaining, batch: batch.batch_number })}
       </Text>
       <Field
-        label={kind === 'adjust' ? 'Change (e.g. -1 or +2)' : 'Quantity to remove'}
+        label={kind === 'adjust' ? t('batch.changeLabel') : t('batch.removeLabel')}
         value={qty}
         onChangeText={setQty}
         error={errors.quantity_change ?? errors.quantity}
         keyboardType="numbers-and-punctuation"
-        hint={kind === 'writeoff' && batch.batch_state === 'EXPIRED' ? `Remove all ${batch.quantity_remaining} expired units` : undefined}
+        hint={kind === 'writeoff' && batch.batch_state === 'EXPIRED' ? t('batch.removeAllHint', { count: batch.quantity_remaining }) : undefined}
       />
-      <Field label="Reason (required)" value={reason} onChangeText={setReason} error={errors.reason} placeholder="Stock count, damaged, expired…" />
+      <Field label={t('field.reasonRequired')} value={reason} onChangeText={setReason} error={errors.reason} placeholder={t('batch.reasonPlaceholder')} />
     </FormModal>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   chips: { gap: 8, paddingBottom: 10 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   name: { fontSize: 15, fontWeight: '600', color: colors.text, flexShrink: 1 },
   muted: { fontSize: 13, color: colors.muted },
-  logRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  logRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   change: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   pair: { flexDirection: 'row', gap: 10 },
-});
+}));

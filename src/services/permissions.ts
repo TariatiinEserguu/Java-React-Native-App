@@ -1,3 +1,5 @@
+import { t } from '../i18n/core';
+
 // Permission matrix from docs/06-business-rules.md §6.3. Checked in every service function,
 // not only by hiding buttons.
 
@@ -30,13 +32,16 @@ export type Permission = keyof typeof MATRIX;
 
 export const CASHIER_MAX_DISCOUNT_PERCENT = 10;
 
-export const ROLE_LABELS: Record<Role, string> = { ADMIN: 'Administrator', PHARMACIST: 'Pharmacist', CASHIER: 'Cashier' };
+/** Display name of a role in the active language. */
+export function roleLabel(role: Role) {
+  return t(`role.${role}`);
+}
 
 export class AppError extends Error {}
 
 export class PermissionError extends AppError {
   constructor(permission: Permission) {
-    super(`You don't have permission to do this (${permission}).`);
+    super(t('error.permission', { permission }));
   }
 }
 
