@@ -113,11 +113,15 @@ Tapping a tile opens the filtered list (e.g. low-stock medicines).
 
 | Element | Guideline |
 | --- | --- |
-| Colours | Primary teal/green (health), neutral greys; status colours: green = OK, amber = low / near expiry, red = out / expired, blue = info |
+| Colours | Primary teal/green (health), neutral greys; status colours: green = OK, amber = low / near expiry, red = out / expired, blue = info. Defined once as light and dark palettes in `src/theme.tsx`; text and controls meet WCAG AA contrast (4.5:1 text, 3:1 control borders) in both |
 | Typography | System font; 22 pt titles, 16 pt body, 13 pt captions; numbers right-aligned with tabular figures |
 | Touch | Minimum 44 × 44 pt targets, 8 pt spacing grid, primary action at bottom within thumb reach |
 | Feedback | Toast for success, inline red text for field errors, confirmation dialog for destructive actions |
 | Empty states | Explain and offer the action, e.g. "No batches yet — **Receive stock**" |
 | Accessibility | Labels on icon buttons, don't use colour alone (add text: "Expired"), support system font scaling and dark mode |
 | Money | `12,500₮`; never show decimals |
-| Dates | `2027-03-31` in tables, "in 23 days" / "3 days ago" as helper text |
+| Dates | Written per language (`Oct 28, 2026` / `2026 оны 10-р сарын 28`); form input stays `YYYY-MM-DD`. Helper text: "in 23 days" / "3 days ago" |
+| Language | Mongolian (default) and English, switchable at any time; stored data is never translated |
+| Theme | Light and dark; follows the device until the user chooses, then the choice is remembered |
+| Navigation | Bottom tabs on phones, a side rail from 900 px wide; one icon family (Ionicons outline) |
+| Motion | No decorative animation; sheets appear without sliding when the device asks to reduce motion |

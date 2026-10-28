@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { runInTransaction } from '../db/transaction';
 import { AppError, assertCan, can, CASHIER_MAX_DISCOUNT_PERCENT, type SessionUser } from './permissions';
 import { Checker } from './validate';
+import { t } from '../i18n/core';
 
 // Checkout (UC-04), prescriptions and refunds. See the activity and sequence diagrams in
 // docs/04-system-diagrams.md. The database triggers re-check the critical rules.
@@ -28,7 +29,7 @@ export class InsufficientStockError extends AppError {
     readonly available: number,
     name: string
   ) {
-    super(available === 0 ? `${name} is out of sellable stock.` : `Only ${available} of ${name} available.`);
+    super(available === 0 ? t('sales.outOfStock', { name }) : t('sales.onlyAvailable', { count: available, name }));
   }
 }
 
@@ -55,15 +56,15 @@ export async function checkout(db: SQLiteDatabase, actor: SessionUser, input: Ch
  */
 export async function recordSale(tx: SQLiteDatabase, actor: SessionUser, input: CheckoutInput, at?: string): Promise<CheckoutResult> {
   const c = new Checker();
-  if (input.lines.length === 0) c.fail('lines', 'The cart is empty.');
-  c.oneOf('payment_method', input.payment_method, PAYMENT_METHODS, 'payment method');
-  const discount = c.int('discount_amount', input.discount_amount ?? 0, 'Discount');
+  if (input.lines.length === 0) c.fail('lines', t('sales.cartEmpty'));
+  c.oneOf('payment_method', input.payment_method, PAYMENT_METHODS, t('validate.choosePayment'));
+  const discount = c.int('discount_amount', input.discount_amount ?? 0, t('field.discount'));
   c.done();
 
   // Merge duplicate lines so each medicine appears once (UNIQUE(order_id, medicine_id)).
   const merged = new Map<number, CartLine>();
   for (const line of input.lines) {
-    if (!Number.isInteger(line.quantity) || line.quantity <= 0) throw new AppError('Quantities must be whole numbers above 0.');
+    if (!Number.isInteger(line.quantity) || line.quantity <= 0) throw new AppError(t('sales.quantityInvalid'));
     const prev = merged.get(line.medicine_id);
     merged.set(line.medicine_id, {
       medicine_id: line.medicine_id,
@@ -84,19 +85,19 @@ export async function recordSale(tx: SQLiteDatabase, actor: SessionUser, input: 
       "SELECT brand_name || IFNULL(' ' || strength, '') AS label, selling_price, requires_prescription, is_active FROM medicines WHERE medicine_id = ?",
       line.medicine_id
     );
-    if (!m) throw new AppError('A medicine in the cart no longer exists.');
-    if (!m.is_active) throw new AppError(`${m.label} is inactive and can't be sold.`);
+    if (!m) throw new AppError(t('sales.medicineGone'));
+    if (!m.is_active) throw new AppError(t('sales.inactive', { name: m.label }));
     if (m.requires_prescription) {
-      if (!can(actor, 'sales.prescription')) throw new AppError(`${m.label} is prescription-only. A pharmacist must sell it.`);
-      if (!line.prescription_id) throw new AppError(`${m.label} needs a verified prescription.`);
+      if (!can(actor, 'sales.prescription')) throw new AppError(t('sales.rxPharmacist', { name: m.label }));
+      if (!line.prescription_id) throw new AppError(t('sales.rxNeeded', { name: m.label }));
     }
     lines.push({ ...line, name: m.label, unit_price: m.selling_price });
   }
 
   const subtotal = lines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0);
-  if (discount > subtotal) throw new AppError('The discount is larger than the subtotal.');
+  if (discount > subtotal) throw new AppError(t('sales.discountTooLarge'));
   if (discount * 100 > subtotal * CASHIER_MAX_DISCOUNT_PERCENT && !can(actor, 'sales.unlimitedDiscount')) {
-    throw new AppError(`Cashiers can give at most ${CASHIER_MAX_DISCOUNT_PERCENT}% discount.`);
+    throw new AppError(t('sales.cashierDiscount', { percent: CASHIER_MAX_DISCOUNT_PERCENT }));
   }
 
   const orderNumber = await nextOrderNumber(tx, now);
@@ -164,15 +165,15 @@ export async function recordPrescription(db: SQLiteDatabase, actor: SessionUser,
   assertCan(actor, 'sales.prescription');
   const c = new Checker();
   const v = {
-    patient_name: c.text('patient_name', input.patient_name, 'Patient name', 2, 100),
-    prescriber_name: c.text('prescriber_name', input.prescriber_name, 'Prescriber name', 2, 100),
+    patient_name: c.text('patient_name', input.patient_name, t('field.patientName'), 2, 100),
+    prescriber_name: c.text('prescriber_name', input.prescriber_name, t('field.prescriberName'), 2, 100),
     prescription_number: c.optionalText('prescription_number', input.prescription_number, 40),
-    issue_date: c.date('issue_date', input.issue_date, 'Issue date'),
+    issue_date: c.date('issue_date', input.issue_date, t('field.issueDate')),
     notes: c.optionalText('notes', input.notes),
   };
   c.done();
   const now = await db.getFirstAsync<{ d: string }>("SELECT date('now', 'localtime') AS d");
-  if (v.issue_date > now!.d) throw new AppError('The prescription issue date is in the future.');
+  if (v.issue_date > now!.d) throw new AppError(t('sales.rxFuture'));
   const result = await db.runAsync(
     `INSERT INTO prescriptions (customer_id, verified_by, patient_name, prescriber_name, prescription_number, issue_date, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -199,28 +200,28 @@ export async function refundOrder(db: SQLiteDatabase, actor: SessionUser, input:
 /** Inner refund step (BR-13): adds RETURN (and WRITE_OFF) movements; history is never deleted. */
 export async function applyRefund(tx: SQLiteDatabase, actor: SessionUser, input: RefundInput, at?: string) {
   const reason = input.reason.trim();
-  if (reason.length < 3) throw new AppError('Enter a reason for the refund.');
+  if (reason.length < 3) throw new AppError(t('sales.refundReason'));
   const lines = input.lines.filter((l) => l.quantity > 0);
-  if (lines.length === 0) throw new AppError('Choose at least one item to return.');
+  if (lines.length === 0) throw new AppError(t('sales.refundNone'));
 
   const order = await tx.getFirstAsync<{ status: string; subtotal: number; total_amount: number; refunded_amount: number }>(
     'SELECT status, subtotal, total_amount, refunded_amount FROM orders WHERE order_id = ?',
     input.order_id
   );
-  if (!order) throw new AppError('Order not found.');
-  if (order.status !== 'COMPLETED') throw new AppError('Only completed orders can be refunded.');
+  if (!order) throw new AppError(t('sales.orderNotFound'));
+  if (order.status !== 'COMPLETED') throw new AppError(t('sales.onlyCompleted'));
   const now = at ?? (await tx.getFirstAsync<{ now: string }>("SELECT datetime('now', 'localtime') AS now"))!.now;
 
   let refundValue = 0;
   for (const line of lines) {
-    if (!Number.isInteger(line.quantity)) throw new AppError('Return quantities must be whole numbers.');
+    if (!Number.isInteger(line.quantity)) throw new AppError(t('sales.returnWhole'));
     const item = await tx.getFirstAsync<{ quantity: number; quantity_returned: number; unit_price: number }>(
       'SELECT quantity, quantity_returned, unit_price FROM order_items WHERE order_item_id = ? AND order_id = ?',
       line.order_item_id, input.order_id
     );
-    if (!item) throw new AppError('That item is not part of this order.');
+    if (!item) throw new AppError(t('sales.notInOrder'));
     if (line.quantity > item.quantity - item.quantity_returned) {
-      throw new AppError(`Only ${item.quantity - item.quantity_returned} of that item can still be returned.`);
+      throw new AppError(t('sales.returnLimit', { count: item.quantity - item.quantity_returned }));
     }
 
     // Put stock back into the batches it came from, most recently allocated first.

@@ -1,39 +1,73 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { confirmAction, useToast } from '../../components/feedback';
 import { useAction } from '../../components/hooks';
-import { Button, Card, ErrorBanner, Field, KeyValue, SectionTitle } from '../../components/ui';
+import { LanguageSwitch, ThemeSwitch } from '../../components/PreferenceControls';
+import { Button, Card, ErrorBanner, Field, Icon, KeyValue, SectionTitle } from '../../components/ui';
 import { useDataChange, useDbQuery } from '../../db/DataContext';
 import { friendlyError } from '../../db/errors';
 import { databaseCounts, integrityIssues } from '../../db/repository';
 import { BUSINESS_TABLES, DATABASE_NAME, DEFAULT_SETTINGS, SCHEMA_VERSION } from '../../db/schema';
 import { dateTime } from '../../format';
+import { useI18n, type TranslationKey } from '../../i18n';
 import { backupInfo, backupSupported, createBackup, restoreBackup } from '../../services/backup';
 import { can } from '../../services/permissions';
 import { getSettings, updateSetting } from '../../services/settings';
 import { resetPassword } from '../../services/users';
 import { useSession, useUser } from '../../session';
-import { colors } from '../../theme';
+import { makeStyles, useTheme } from '../../theme';
 
-const SETTING_LABELS: Record<keyof typeof DEFAULT_SETTINGS, [label: string, numeric: boolean]> = {
-  pharmacy_name: ['Pharmacy name (on receipts)', false],
-  expiry_warning_days: ['Near-expiry warning (days)', true],
-  default_min_stock: ['Default minimum stock for new medicines', true],
-  auto_lock_minutes: ['Auto-lock after inactivity (minutes)', true],
-  receipt_footer: ['Receipt footer', false],
+const SETTING_LABELS: Record<keyof typeof DEFAULT_SETTINGS, [label: TranslationKey, numeric: boolean]> = {
+  pharmacy_name: ['settings.pharmacyName', false],
+  expiry_warning_days: ['settings.expiryWarning', true],
+  default_min_stock: ['settings.defaultMinStock', true],
+  auto_lock_minutes: ['settings.autoLock', true],
+  receipt_footer: ['settings.receiptFooter', false],
+};
+
+// The integrity view (v_integrity_issues) stores English text; map each known message for display.
+const INTEGRITY_ISSUES: Record<string, TranslationKey> = {
+  'Batch balance differs from movement ledger': 'integrity.batchBalance',
+  'Completed order without items': 'integrity.orderNoItems',
+  'Order subtotal differs from its lines': 'integrity.subtotal',
+  'Sold quantity differs from batch allocations': 'integrity.soldQty',
+  'Returned quantity differs from RETURN movements': 'integrity.returnedQty',
+  'Prescription medicine sold without prescription': 'integrity.rx',
 };
 
 export function SettingsScreen() {
   const user = useUser();
   return (
     <View>
+      <Preferences />
       {can(user, 'settings.manage') ? <AppSettings /> : null}
       {can(user, 'backup.manage') ? <Backup /> : null}
       <ChangePassword />
       <About />
     </View>
+  );
+}
+
+function Preferences() {
+  const { t } = useI18n();
+  const styles = useStyles();
+  return (
+    <>
+      <SectionTitle>{t('settings.preferences')}</SectionTitle>
+      <Card>
+        <View style={styles.prefRow}>
+          <Text style={styles.prefLabel}>{t('language.label')}</Text>
+          <LanguageSwitch variant="full" />
+        </View>
+        <View style={styles.prefRow}>
+          <Text style={styles.prefLabel}>{t('theme.label')}</Text>
+          <ThemeSwitch />
+        </View>
+        <Text style={styles.muted}>{t('settings.preferencesHint')}</Text>
+      </Card>
+    </>
   );
 }
 
@@ -47,6 +81,7 @@ function AppSettings() {
 }
 
 function SettingsForm({ saved }: { saved: Record<string, string> }) {
+  const { t } = useI18n();
   const db = useSQLiteContext();
   const user = useUser();
   const [values, setValues] = useState(saved);
@@ -61,35 +96,37 @@ function SettingsForm({ saved }: { saved: Record<string, string> }) {
       try {
         await updateSetting(db, user, key, values[key]);
       } catch (e) {
-        setError(`${SETTING_LABELS[key][0]}: ${friendlyError(e)}`);
+        setError(`${t(SETTING_LABELS[key][0])}: ${friendlyError(e)}`);
         return;
       }
     }
     notifyChange();
-    toast('Settings saved');
+    toast(t('settings.saved'));
   };
 
   return (
     <>
-      <SectionTitle>Settings</SectionTitle>
+      <SectionTitle>{t('settings.title')}</SectionTitle>
       <Card>
         {error ? <ErrorBanner message={error} /> : null}
         {(Object.keys(SETTING_LABELS) as (keyof typeof DEFAULT_SETTINGS)[]).map((key) => (
           <Field
             key={key}
-            label={SETTING_LABELS[key][0]}
+            label={t(SETTING_LABELS[key][0])}
             value={values[key] ?? ''}
             onChangeText={(v) => setValues((s) => ({ ...s, [key]: v }))}
             keyboardType={SETTING_LABELS[key][1] ? 'number-pad' : 'default'}
           />
         ))}
-        <Button title="Save settings" onPress={save} />
+        <Button title={t('settings.save')} onPress={save} />
       </Card>
     </>
   );
 }
 
 function Backup() {
+  const { t, tn } = useI18n();
+  const styles = useStyles();
   const db = useSQLiteContext();
   const user = useUser();
   const { logout } = useSession();
@@ -107,7 +144,7 @@ function Backup() {
     try {
       await createBackup(db, user);
       notifyChange();
-      toast('Backup created');
+      toast(t('backup.created'));
     } catch (e) {
       toast(friendlyError(e), 'error');
     } finally {
@@ -117,12 +154,12 @@ function Backup() {
 
   const restore = async () => {
     if (!info) return;
-    if (!(await confirmAction('Restore backup?', `All current data will be replaced by the backup from ${dateTime(info.created_at)}. You will be logged out.`, 'Restore'))) return;
+    if (!(await confirmAction(t('backup.restoreTitle'), t('backup.restoreBody', { when: dateTime(info.created_at) }), t('backup.restore')))) return;
     setBusy(true);
     try {
       await restoreBackup(db, user);
       notifyChange();
-      toast('Backup restored. Please log in again.');
+      toast(t('backup.restored'));
       logout();
     } catch (e) {
       toast(friendlyError(e), 'error');
@@ -132,21 +169,21 @@ function Backup() {
 
   return (
     <>
-      <SectionTitle>Backup & restore</SectionTitle>
+      <SectionTitle>{t('backup.title')}</SectionTitle>
       <Card>
         {backupSupported ? (
           <>
             <Text style={styles.muted}>
-              Copies the whole database to a backup file in the app’s private storage, using SQLite’s backup API.
+              {t('backup.intro')}
             </Text>
-            <KeyValue label="Last backup" value={info ? `${dateTime(info.created_at)} (${info.orders} orders)` : 'None yet'} />
+            <KeyValue label={t('backup.last')} value={info ? `${dateTime(info.created_at)} (${tn('count.orders', info.orders)})` : t('backup.noneYet')} />
             <View style={styles.buttons}>
-              <Button title="Create backup" onPress={backup} loading={busy} />
-              <Button title="Restore backup" variant="danger" onPress={restore} disabled={!info || busy} />
+              <Button title={t('backup.create')} icon="cloud-upload-outline" onPress={backup} loading={busy} />
+              <Button title={t('backup.restore')} variant="danger" onPress={restore} disabled={!info || busy} />
             </View>
           </>
         ) : (
-          <Text style={styles.muted}>Backups are available in the Android and iOS app. On web the data lives in the browser’s storage.</Text>
+          <Text style={styles.muted}>{t('backup.webNote')}</Text>
         )}
       </Card>
     </>
@@ -154,21 +191,22 @@ function Backup() {
 }
 
 function ChangePassword() {
+  const { t } = useI18n();
   const db = useSQLiteContext();
   const user = useUser();
   const [password, setPassword] = useState('');
   const run = useAction();
   return (
     <>
-      <SectionTitle>My password</SectionTitle>
+      <SectionTitle>{t('password.title')}</SectionTitle>
       <Card>
-        <Field label="New password" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" hint="At least 8 characters with a letter and a number." />
+        <Field label={t('password.new')} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" hint={t('validate.passwordHint')} />
         <Button
-          title="Change password"
+          title={t('password.change')}
           variant="secondary"
           disabled={!password}
           onPress={async () => {
-            if (await run(() => resetPassword(db, user, user.user_id, password), 'Password changed')) setPassword('');
+            if (await run(() => resetPassword(db, user, user.user_id, password), t('password.changed'))) setPassword('');
           }}
         />
       </Card>
@@ -177,24 +215,33 @@ function ChangePassword() {
 }
 
 function About() {
+  const { t, tn } = useI18n();
+  const { colors } = useTheme();
+  const styles = useStyles();
   const { data } = useDbQuery(async (db) => ({ counts: await databaseCounts(db, BUSINESS_TABLES), issues: await integrityIssues(db) }));
   return (
     <>
-      <SectionTitle>About this database</SectionTitle>
+      <SectionTitle>{t('about.title')}</SectionTitle>
       <Card>
-        <KeyValue label="File" value={DATABASE_NAME} />
-        <KeyValue label="Schema version" value={String(SCHEMA_VERSION)} />
+        <KeyValue label={t('about.file')} value={DATABASE_NAME} />
+        <KeyValue label={t('about.schema')} value={String(SCHEMA_VERSION)} />
         {data
-          ? BUSINESS_TABLES.map((t) => <KeyValue key={t} label={t} value={`${data.counts[t]} rows`} />)
+          ? BUSINESS_TABLES.map((table) => <KeyValue key={table} label={table} value={tn('count.rows', data.counts[table])} />)
           : null}
         <View style={{ marginTop: 8 }}>
           {data?.issues.length === 0 ? (
-            <Text style={{ color: colors.success, fontWeight: '600' }}>✓ Integrity check passed: stock ledger, order totals and prescriptions are consistent.</Text>
+            <View style={styles.statusRow}>
+              <Icon name="checkmark-circle-outline" size={18} color={colors.success} />
+              <Text style={[styles.statusText, { color: colors.success }]}>{t('about.integrityOk')}</Text>
+            </View>
           ) : (
             data?.issues.map((i, n) => (
-              <Text key={n} style={{ color: colors.danger }}>
-                ⚠ {i.issue} ({i.ref})
-              </Text>
+              <View key={n} style={styles.statusRow}>
+                <Icon name="warning-outline" size={18} color={colors.danger} />
+                <Text style={[styles.statusText, { color: colors.danger }]}>
+                  {INTEGRITY_ISSUES[i.issue] ? t(INTEGRITY_ISSUES[i.issue]) : i.issue} ({i.ref})
+                </Text>
+              </View>
             ))
           )}
         </View>
@@ -203,7 +250,11 @@ function About() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   muted: { fontSize: 13, color: colors.muted, marginBottom: 8 },
   buttons: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
-});
+  prefRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 },
+  prefLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
+  statusRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 2 },
+  statusText: { flex: 1, fontWeight: '600', fontSize: 13 },
+}));

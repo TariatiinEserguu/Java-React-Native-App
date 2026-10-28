@@ -1,6 +1,16 @@
-/** Whole Mongolian tögrög: 12500 → "12,500₮". */
+import { getLanguage, getLocale, t, tn } from './i18n/core';
+
+/** Whole Mongolian tögrög: 12500 → "12,500₮". Grouping follows the active locale; the amount is never altered. */
+export function formatNumber(value: number) {
+  try {
+    return value.toLocaleString(getLocale());
+  } catch {
+    return value.toLocaleString('en-US');
+  }
+}
+
 export function money(value: number) {
-  return `${Math.round(value).toLocaleString('en-US')}₮`;
+  return `${formatNumber(Math.round(value))}₮`;
 }
 
 /** The database stores local times as "YYYY-MM-DD HH:MM:SS" and dates as "YYYY-MM-DD". */
@@ -11,30 +21,43 @@ function parseSqliteDate(value: string) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+const pad = (n: number) => String(n).padStart(2, '0');
+
+// Mongolian dates are written year-first with the month as an ordinal ("2026 оны 10-р сарын 28").
+// Written out here instead of via Intl so every device renders them the same way.
+function mongolianDate(d: Date, withYear: boolean) {
+  const day = `${d.getMonth() + 1}-р сарын ${d.getDate()}`;
+  return withYear ? `${d.getFullYear()} оны ${day}` : day;
+}
+
 export function shortDate(value: string | null) {
   if (!value) return '—';
-  return parseSqliteDate(value)?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) ?? value;
+  const date = parseSqliteDate(value);
+  if (!date) return value;
+  if (getLanguage() === 'mn') return mongolianDate(date, true);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function dateTime(value: string | null) {
   if (!value) return '—';
-  return (
-    parseSqliteDate(value)?.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) ?? value
-  );
+  const date = parseSqliteDate(value);
+  if (!date) return value;
+  if (getLanguage() === 'mn') return `${mongolianDate(date, false)}, ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 /** Helper text for expiry dates: "in 23 days", "expired 3 days ago". */
 export function daysLabel(days: number) {
-  if (days === 0) return 'expires today';
-  if (days < 0) return `expired ${-days} day${days === -1 ? '' : 's'} ago`;
-  return `in ${days} day${days === 1 ? '' : 's'}`;
+  if (days === 0) return t('days.today');
+  if (days < 0) return tn('days.ago', -days);
+  return tn('days.in', days);
 }
 
 /** Today's local date as YYYY-MM-DD. */
 export function todayIso(offsetDays = 0) {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function formatCell(value: unknown): string {
