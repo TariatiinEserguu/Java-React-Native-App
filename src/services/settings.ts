@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { DEFAULT_SETTINGS } from '../db/schema';
 import { AppError, assertCan, type SessionUser } from './permissions';
+import { t } from '../i18n/core';
 
 export type Settings = {
   pharmacy_name: string;
@@ -42,13 +43,13 @@ export async function writeSetting(db: SQLiteDatabase, key: string, value: strin
 export async function updateSetting(db: SQLiteDatabase, actor: SessionUser, key: keyof typeof DEFAULT_SETTINGS, raw: string) {
   assertCan(actor, 'settings.manage');
   const value = raw.trim();
-  if (!(key in DEFAULT_SETTINGS)) throw new AppError(`Unknown setting ${key}.`);
+  if (!(key in DEFAULT_SETTINGS)) throw new AppError(t('settings.unknown', { key }));
   const range = NUMERIC[key];
   if (range) {
     const n = Number(value);
-    if (!Number.isInteger(n) || n < range[0] || n > range[1]) throw new AppError(`Enter a whole number from ${range[0]} to ${range[1]}.`);
+    if (!Number.isInteger(n) || n < range[0] || n > range[1]) throw new AppError(t('settings.wholeRange', { min: range[0], max: range[1] }));
   } else if (!value || value.length > 100) {
-    throw new AppError('Enter 1–100 characters.');
+    throw new AppError(t('settings.textLength'));
   }
   await writeSetting(db, key, value);
 }

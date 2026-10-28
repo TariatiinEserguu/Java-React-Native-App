@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { formatNumber, money } from '../format';
+import { t } from '../i18n/core';
 import type { Permission } from '../services/permissions';
 
 // Reports from docs/07-reports.md. Each one is a single SQL query over the stored data and returns
@@ -11,8 +13,6 @@ export type ReportResult = { columns: string[]; rows: unknown[][]; summary?: str
 
 type ReportDef = {
   id: string;
-  title: string;
-  description: string;
   permission: Permission;
   usesRange: boolean;
   run: (db: SQLiteDatabase, range: ReportRange) => Promise<ReportResult>;
@@ -28,13 +28,10 @@ const sum = (r: ReportResult, column: string) => {
   const i = r.columns.indexOf(column);
   return i < 0 ? 0 : r.rows.reduce<number>((s, row) => s + Number(row[i] ?? 0), 0);
 };
-const mnt = (n: number) => `${Math.round(n).toLocaleString('en-US')}₮`;
 
 export const REPORTS: ReportDef[] = [
   {
     id: 'sales-daily',
-    title: 'Sales by day',
-    description: 'Orders, gross, refunds and net sales per day',
     permission: 'reports.view',
     usesRange: true,
     run: async (db, r) => {
@@ -46,13 +43,11 @@ export const REPORTS: ReportDef[] = [
          GROUP BY sale_date ORDER BY sale_date DESC`,
         [r.from, r.to]
       );
-      return { ...res, summary: `${sum(res, 'orders')} orders · net ${mnt(sum(res, 'net'))}` };
+      return { ...res, summary: t('report.summary.salesDaily', { orders: formatNumber(sum(res, 'orders')), net: money(sum(res, 'net')) }) };
     },
   },
   {
     id: 'best-sellers',
-    title: 'Best-selling medicines',
-    description: 'Units sold net of returns, and net revenue',
     permission: 'reports.view',
     usesRange: true,
     run: (db, r) =>
@@ -73,8 +68,6 @@ export const REPORTS: ReportDef[] = [
   },
   {
     id: 'sales-category',
-    title: 'Sales by category',
-    description: 'Units and revenue per medicine category',
     permission: 'reports.view',
     usesRange: true,
     run: (db, r) =>
@@ -93,8 +86,6 @@ export const REPORTS: ReportDef[] = [
   },
   {
     id: 'sales-staff',
-    title: 'Sales by staff and payment',
-    description: 'Who sold how much, by payment method',
     permission: 'reports.view',
     usesRange: true,
     run: (db, r) =>
@@ -108,8 +99,6 @@ export const REPORTS: ReportDef[] = [
   },
   {
     id: 'low-stock',
-    title: 'Low stock / reorder list',
-    description: 'Active medicines at or below their minimum level',
     permission: 'reports.view',
     usesRange: false,
     run: (db) =>
@@ -127,8 +116,6 @@ export const REPORTS: ReportDef[] = [
   },
   {
     id: 'expiry',
-    title: 'Expiry report',
-    description: 'Expired and near-expiry batches that still have stock',
     permission: 'reports.view',
     usesRange: false,
     run: async (db) => {
@@ -141,13 +128,11 @@ export const REPORTS: ReportDef[] = [
          ORDER BY expiry_date`,
         []
       );
-      return { ...res, summary: `Value at cost: ${mnt(sum(res, 'cost_value'))}` };
+      return { ...res, summary: t('report.summary.expiry', { value: money(sum(res, 'cost_value')) }) };
     },
   },
   {
     id: 'valuation',
-    title: 'Inventory valuation',
-    description: 'Sellable stock at cost and at selling price, by category',
     permission: 'reports.view',
     usesRange: false,
     run: async (db) => {
@@ -163,13 +148,11 @@ export const REPORTS: ReportDef[] = [
          GROUP BY c.category_id ORDER BY at_cost DESC`,
         []
       );
-      return { ...res, summary: `Total at cost ${mnt(sum(res, 'at_cost'))} · at price ${mnt(sum(res, 'at_price'))}` };
+      return { ...res, summary: t('report.summary.valuation', { cost: money(sum(res, 'at_cost')), price: money(sum(res, 'at_price')) }) };
     },
   },
   {
     id: 'movements',
-    title: 'Stock movement log',
-    description: 'Every receipt, sale, return, adjustment and write-off',
     permission: 'reports.view',
     usesRange: true,
     run: (db, r) =>
@@ -190,8 +173,6 @@ export const REPORTS: ReportDef[] = [
   },
   {
     id: 'losses',
-    title: 'Write-offs & adjustments',
-    description: 'Stock removed or corrected, with value at cost',
     permission: 'reports.view',
     usesRange: true,
     run: async (db, r) => {
@@ -207,13 +188,11 @@ export const REPORTS: ReportDef[] = [
          ORDER BY sm.movement_date DESC`,
         [r.from, r.to]
       );
-      return { ...res, summary: `Net value: ${mnt(sum(res, 'value'))}` };
+      return { ...res, summary: t('report.summary.losses', { value: money(sum(res, 'value')) }) };
     },
   },
   {
     id: 'profit',
-    title: 'Gross profit',
-    description: 'Net sales minus cost of the batches actually sold',
     permission: 'reports.profit',
     usesRange: true,
     run: async (db, r) => {
@@ -228,13 +207,11 @@ export const REPORTS: ReportDef[] = [
       );
       const net = sum(res, 'net_sales');
       const profit = sum(res, 'gross_profit');
-      return { ...res, summary: `Gross profit ${mnt(profit)} · margin ${net ? Math.round((profit / net) * 100) : 0}%` };
+      return { ...res, summary: t('report.summary.profit', { profit: money(profit), margin: net ? Math.round((profit / net) * 100) : 0 }) };
     },
   },
   {
     id: 'customers',
-    title: 'Customer history',
-    description: 'Orders and spending per registered customer',
     permission: 'reports.view',
     usesRange: true,
     run: (db, r) =>
