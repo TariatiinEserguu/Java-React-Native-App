@@ -7,6 +7,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { getDashboard, getOrderDetail, integrityIssues, listMedicines } from '../src/db/repository';
 import { REPORTS } from '../src/db/reports';
+import { setLanguage } from '../src/i18n/core';
 import { BUSINESS_TABLES, migrate } from '../src/db/schema';
 import { createMedicine, updateMedicine } from '../src/services/catalog';
 import { adjustStock, insertBatch, receiveBatch, writeOffStock } from '../src/services/inventory';
@@ -15,6 +16,9 @@ import { PermissionError, type SessionUser } from '../src/services/permissions';
 import { checkout, recordPrescription, refundOrder } from '../src/services/sales';
 import { createUser, login, setUserActive, updateUser } from '../src/services/users';
 import { openTestDb } from './nodeDb';
+
+// The business rules are asserted against their English messages; i18n.test.ts covers the other language.
+setLanguage('en');
 
 let db: SQLiteDatabase;
 let admin: SessionUser;

@@ -1,27 +1,28 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useToast } from '../components/feedback';
 import { FormModal } from '../components/FormModal';
 import { useSubmit } from '../components/hooks';
 import { SelectField } from '../components/SelectField';
 import { Sheet } from '../components/Sheet';
-import { Badge, Button, Card, Chip, EmptyState, Field, KeyValue, ScreenHeader, SearchBar, SectionTitle, screen } from '../components/ui';
+import { Badge, Button, Card, Chip, EmptyState, Field, focusRing, KeyValue, LoadingState, ScreenHeader, SearchBar, SectionTitle, screen, type PressState } from '../components/ui';
 import { useDbQuery } from '../db/DataContext';
 import { getOrderDetail, listCustomers, listMedicines, type Medicine } from '../db/repository';
 import { dateTime, medicineLabel, money, todayIso } from '../format';
+import { useI18n } from '../i18n';
 import { can, CASHIER_MAX_DISCOUNT_PERCENT } from '../services/permissions';
 import { checkout, PAYMENT_METHODS, recordPrescription, type CheckoutResult, type PaymentMethod } from '../services/sales';
 import { getSettings } from '../services/settings';
 import { useUser } from '../session';
-import { colors } from '../theme';
+import { makeStyles, useTheme } from '../theme';
 
 type Line = { medicine: Medicine; quantity: number; prescription_id: number | null; prescription_label: string | null };
 
-const PAYMENT_LABELS: Record<PaymentMethod, string> = { CASH: 'Cash', CARD: 'Card', QPAY: 'QPay', OTHER: 'Other' };
-
 export function SellScreen() {
+  const { t } = useI18n();
+  const styles = useStyles();
   const db = useSQLiteContext();
   const user = useUser();
   const toast = useToast();
@@ -46,7 +47,7 @@ export function SellScreen() {
     const existing = cart.find((l) => l.medicine.medicine_id === m.medicine_id);
     if (existing) return changeQty(m.medicine_id, existing.quantity + 1);
     if (m.requires_prescription) {
-      if (!can(user, 'sales.prescription')) return toast(`${medicineLabel(m)} is prescription-only. Ask a pharmacist.`, 'error');
+      if (!can(user, 'sales.prescription')) return toast(t('sell.rxAskPharmacist', { name: medicineLabel(m) }), 'error');
       return setRxFor(m);
     }
     setCart((c) => [...c, { medicine: m, quantity: 1, prescription_id: null, prescription_label: null }]);
@@ -58,7 +59,7 @@ export function SellScreen() {
         if (l.medicine.medicine_id !== medicineId) return [l];
         if (quantity <= 0) return [];
         if (quantity > l.medicine.sellable_stock) {
-          toast(`Only ${l.medicine.sellable_stock} of ${medicineLabel(l.medicine)} available.`, 'error');
+          toast(t('sales.onlyAvailable', { count: l.medicine.sellable_stock, name: medicineLabel(l.medicine) }), 'error');
           return [l];
         }
         return [{ ...l, quantity }];
@@ -87,15 +88,17 @@ export function SellScreen() {
       setCustomerId(null);
       setPayment('CASH');
       setReceipt(result);
+      toast(t('sell.saleCompleted'));
     }
   };
 
   return (
     <ScrollView contentContainerStyle={screen.content} keyboardShouldPersistTaps="handled">
-      <ScreenHeader title="Sell" subtitle="Search, add to cart, check out" />
-      <SearchBar value={search} onChangeText={setSearch} placeholder="Search medicine or scan/type barcode…" />
+      <ScreenHeader title={t('sell.title')} subtitle={t('sell.subtitle')} />
+      <SearchBar value={search} onChangeText={setSearch} placeholder={t('sell.search')} />
       <Card style={{ paddingVertical: 4 }}>
-        {medicines?.length === 0 ? <EmptyState text="No medicines match." /> : null}
+        {!medicines ? <LoadingState /> : null}
+        {medicines?.length === 0 ? <EmptyState icon="search-outline" text={t('medicines.empty')} hint={t('medicines.emptyHint')} /> : null}
         {medicines?.slice(0, search ? 30 : 8).map((m) => {
           const inCart = cart.find((l) => l.medicine.medicine_id === m.medicine_id)?.quantity ?? 0;
           const out = m.sellable_stock - inCart <= 0;
@@ -104,30 +107,30 @@ export function SellScreen() {
               <View style={{ flex: 1 }}>
                 <View style={styles.rowGap}>
                   <Text style={styles.name}>{medicineLabel(m)}</Text>
-                  {m.requires_prescription ? <Badge label="Rx" tone="info" /> : null}
+                  {m.requires_prescription ? <Badge label={t('medicine.rx')} tone="info" /> : null}
                 </View>
                 <Text style={styles.muted}>
-                  {money(m.selling_price)} · {m.unit} · {m.sellable_stock} available
+                  {money(m.selling_price)} · {m.unit} · {t('stock.available', { count: m.sellable_stock })}
                 </Text>
               </View>
-              <Button title={out ? 'Out' : '+ Add'} small disabled={out} onPress={() => add(m)} />
+              <Button title={out ? t('stock.OUT') : t('common.add')} icon={out ? undefined : 'add'} small disabled={out} onPress={() => add(m)} />
             </View>
           );
         })}
-        {!search && (medicines?.length ?? 0) > 8 ? <Text style={styles.more}>Type to search all {medicines?.length} medicines</Text> : null}
+        {!search && (medicines?.length ?? 0) > 8 ? <Text style={styles.more}>{t('sell.typeToSearch', { count: medicines?.length ?? 0 })}</Text> : null}
       </Card>
 
-      <SectionTitle right={cart.length ? <Button title="Clear" variant="ghost" small onPress={() => setCart([])} /> : undefined}>
-        Cart ({cart.reduce((s, l) => s + l.quantity, 0)})
+      <SectionTitle right={cart.length ? <Button title={t('sell.clearCart')} variant="ghost" small onPress={() => setCart([])} /> : undefined}>
+        {t('sell.cart', { count: cart.reduce((s, l) => s + l.quantity, 0) })}
       </SectionTitle>
       <Card>
-        {cart.length === 0 ? <EmptyState text="The cart is empty." /> : null}
+        {cart.length === 0 ? <EmptyState icon="cart-outline" text={t('sales.cartEmpty')} hint={t('sell.cartHint')} /> : null}
         {cart.map((l) => (
           <View key={l.medicine.medicine_id} style={styles.cartRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{medicineLabel(l.medicine)}</Text>
               <Text style={styles.muted}>
-                {money(l.medicine.selling_price)} each{l.prescription_label ? ` · Rx: ${l.prescription_label}` : ''}
+                {money(l.medicine.selling_price)} {t('sell.each')}{l.prescription_label ? ` · ${t('sell.rxLabel', { label: l.prescription_label })}` : ''}
               </Text>
             </View>
             <View style={styles.stepper}>
@@ -140,40 +143,40 @@ export function SellScreen() {
         ))}
         {cart.length ? (
           <View style={styles.totals}>
-            <KeyValue label="Subtotal" value={money(subtotal)} strong />
+            <KeyValue label={t('common.subtotal')} value={money(subtotal)} strong />
           </View>
         ) : null}
       </Card>
-      <Button title="Checkout" onPress={openCheckout} disabled={cart.length === 0} style={{ marginTop: 12 }} />
+      <Button title={t('sell.checkout')} icon="card-outline" onPress={openCheckout} disabled={cart.length === 0} style={{ marginTop: 12 }} />
 
-      <FormModal visible={confirming} title="Checkout" submitLabel={`Confirm ${money(total)}`} onClose={() => setConfirming(false)} onSubmit={confirm} submitting={saving} error={error}>
+      <FormModal visible={confirming} title={t('sell.checkout')} submitLabel={t('sell.confirm', { total: money(total) })} onClose={() => setConfirming(false)} onSubmit={confirm} submitting={saving} error={error}>
         <SelectField
-          label="Customer"
+          label={t('field.customer')}
           value={customerId ?? 0}
           onChange={(v) => setCustomerId(v || null)}
-          options={[{ value: 0, label: 'Walk-in customer' }, ...(customers ?? []).map((c) => ({ value: c.customer_id, label: c.full_name, detail: c.phone ?? undefined }))]}
+          options={[{ value: 0, label: t('common.walkInCustomer') }, ...(customers ?? []).map((c) => ({ value: c.customer_id, label: c.full_name, detail: c.phone ?? undefined }))]}
         />
         <Field
-          label="Discount (₮)"
+          label={t('field.discountMnt')}
           value={discount}
           onChangeText={setDiscount}
           keyboardType="number-pad"
           placeholder="0"
-          hint={can(user, 'sales.unlimitedDiscount') ? undefined : `Cashiers can give up to ${CASHIER_MAX_DISCOUNT_PERCENT}%.`}
+          hint={can(user, 'sales.unlimitedDiscount') ? undefined : t('sell.discountHint', { percent: CASHIER_MAX_DISCOUNT_PERCENT })}
         />
-        <Text style={styles.label}>Payment method</Text>
+        <Text style={styles.label}>{t('field.paymentMethod')}</Text>
         <View style={styles.chips}>
           {PAYMENT_METHODS.map((p) => (
-            <Chip key={p} label={PAYMENT_LABELS[p]} active={payment === p} onPress={() => setPayment(p)} />
+            <Chip key={p} label={t(`payment.${p}`)} active={payment === p} onPress={() => setPayment(p)} />
           ))}
         </View>
         <Card style={{ marginTop: 12 }}>
           {cart.map((l) => (
             <KeyValue key={l.medicine.medicine_id} label={`${medicineLabel(l.medicine)} × ${l.quantity}`} value={money(l.quantity * l.medicine.selling_price)} />
           ))}
-          <KeyValue label="Subtotal" value={money(subtotal)} />
-          {discountValue ? <KeyValue label="Discount" value={`−${money(discountValue)}`} /> : null}
-          <KeyValue label="Total" value={money(total)} strong />
+          <KeyValue label={t('common.subtotal')} value={money(subtotal)} />
+          {discountValue ? <KeyValue label={t('field.discount')} value={`−${money(discountValue)}`} /> : null}
+          <KeyValue label={t('common.total')} value={money(total)} strong />
         </Card>
       </FormModal>
 
@@ -193,8 +196,16 @@ export function SellScreen() {
 }
 
 function StepButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const { t } = useI18n();
+  const { colors } = useTheme();
+  const styles = useStyles();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label === '+' ? 'Increase' : 'Decrease'} onPress={onPress} style={({ pressed }) => [styles.step, pressed && { opacity: 0.6 }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label === '+' ? t('sell.increase') : t('sell.decrease')}
+      onPress={onPress}
+      style={(state: PressState) => [styles.step, state.hovered && { backgroundColor: colors.surfaceAlt }, state.pressed && { opacity: 0.6 }, focusRing(colors, state)]}
+    >
       <Text style={styles.stepText}>{label}</Text>
     </Pressable>
   );
@@ -211,6 +222,8 @@ function PrescriptionForm({
   onClose: () => void;
   onSaved: (id: number, label: string) => void;
 }) {
+  const { t } = useI18n();
+  const styles = useStyles();
   const db = useSQLiteContext();
   const user = useUser();
   const [form, setForm] = useState({ patient_name: '', prescriber_name: '', prescription_number: '', issue_date: todayIso() });
@@ -226,26 +239,28 @@ function PrescriptionForm({
   };
 
   return (
-    <FormModal visible={!!medicine} title="Verify prescription" submitLabel="Verify & add" onClose={onClose} onSubmit={save} submitting={saving} error={error}>
+    <FormModal visible={!!medicine} title={t('rx.title')} submitLabel={t('rx.submit')} onClose={onClose} onSubmit={save} submitting={saving} error={error}>
       <Text style={[styles.muted, { marginBottom: 12 }]}>
-        {medicine ? medicineLabel(medicine) : ''} is prescription-only. Check the paper prescription and record it. You ({user.full_name}) are recorded as the verifying pharmacist.
+        {t('rx.intro', { name: medicine ? medicineLabel(medicine) : '', user: user.full_name })}
       </Text>
-      <Field label="Patient name" value={form.patient_name} onChangeText={set('patient_name')} error={errors.patient_name} />
-      <Field label="Prescriber (doctor)" value={form.prescriber_name} onChangeText={set('prescriber_name')} error={errors.prescriber_name} />
-      <Field label="Prescription number (optional)" value={form.prescription_number} onChangeText={set('prescription_number')} error={errors.prescription_number} />
-      <Field label="Issue date" value={form.issue_date} onChangeText={set('issue_date')} error={errors.issue_date} placeholder="YYYY-MM-DD" />
+      <Field label={t('field.patientName')} value={form.patient_name} onChangeText={set('patient_name')} error={errors.patient_name} />
+      <Field label={t('rx.prescriber')} value={form.prescriber_name} onChangeText={set('prescriber_name')} error={errors.prescriber_name} />
+      <Field label={t('rx.number')} value={form.prescription_number} onChangeText={set('prescription_number')} error={errors.prescription_number} />
+      <Field label={t('field.issueDate')} value={form.issue_date} onChangeText={set('issue_date')} error={errors.issue_date} placeholder={t('common.datePlaceholder')} />
     </FormModal>
   );
 }
 
 function Receipt({ result, onClose }: { result: CheckoutResult | null; onClose: () => void }) {
+  const { t } = useI18n();
+  const styles = useStyles();
   const { data } = useDbQuery(
     async (db) => (result ? { detail: await getOrderDetail(db, result.order_id), settings: await getSettings(db) } : null),
     [result?.order_id]
   );
   const detail = data?.detail;
   return (
-    <Sheet visible={!!result} title="Sale complete" subtitle={result?.order_number} onClose={onClose} footer={<Button title="New sale" onPress={onClose} style={{ flex: 1 }} />}>
+    <Sheet visible={!!result} title={t('sell.saleComplete')} subtitle={result?.order_number} onClose={onClose} footer={<Button title={t('sell.newSale')} onPress={onClose} style={{ flex: 1 }} />}>
       {detail ? (
         <Card>
           <Text style={styles.receiptTitle}>{data?.settings.pharmacy_name}</Text>
@@ -253,16 +268,16 @@ function Receipt({ result, onClose }: { result: CheckoutResult | null; onClose: 
             {detail.order.order_number} · {dateTime(detail.order.completed_at)}
           </Text>
           <Text style={styles.receiptMeta}>
-            Served by {detail.order.staff_name} · {detail.order.customer_name ?? 'Walk-in'}
+            {t('receipt.servedBy', { name: detail.order.staff_name })} · {detail.order.customer_name ?? t('common.walkIn')}
           </Text>
           <View style={styles.divider} />
           {detail.lines.map((l) => (
             <KeyValue key={l.order_item_id} label={`${l.label} × ${l.quantity}`} value={money(l.line_total)} />
           ))}
           <View style={styles.divider} />
-          <KeyValue label="Subtotal" value={money(detail.order.subtotal)} />
-          {detail.order.discount_amount ? <KeyValue label="Discount" value={`−${money(detail.order.discount_amount)}`} /> : null}
-          <KeyValue label={`Paid (${detail.order.payment_method})`} value={money(detail.order.total_amount)} strong />
+          <KeyValue label={t('common.subtotal')} value={money(detail.order.subtotal)} />
+          {detail.order.discount_amount ? <KeyValue label={t('field.discount')} value={`−${money(detail.order.discount_amount)}`} /> : null}
+          <KeyValue label={t('receipt.paid', { method: t(`payment.${detail.order.payment_method as PaymentMethod}`) })} value={money(detail.order.total_amount)} strong />
           <Text style={styles.receiptFooter}>{data?.settings.receipt_footer}</Text>
         </Card>
       ) : null}
@@ -270,13 +285,13 @@ function Receipt({ result, onClose }: { result: CheckoutResult | null; onClose: 
   );
 }
 
-const styles = StyleSheet.create({
-  result: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+const useStyles = makeStyles((colors) => ({
+  result: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   rowGap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   name: { fontSize: 15, fontWeight: '600', color: colors.text, flexShrink: 1 },
   muted: { fontSize: 13, color: colors.muted },
   more: { textAlign: 'center', color: colors.muted, paddingVertical: 10, fontSize: 13 },
-  cartRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  cartRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   step: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   stepText: { fontSize: 18, fontWeight: '700', color: colors.primary },
@@ -289,4 +304,4 @@ const styles = StyleSheet.create({
   receiptMeta: { fontSize: 12, color: colors.muted, textAlign: 'center' },
   receiptFooter: { fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 10 },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 8 },
-});
+}));

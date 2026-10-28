@@ -1,8 +1,10 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors } from '../theme';
+import { t } from '../i18n/core';
+import { makeStyles, useTheme } from '../theme';
+import { Icon } from './ui';
 
 type ToastKind = 'success' | 'error';
 const ToastContext = createContext<(message: string, kind?: ToastKind) => void>(() => {});
@@ -10,6 +12,8 @@ const ToastContext = createContext<(message: string, kind?: ToastKind) => void>(
 /** Short, non-blocking status messages ("Product saved", errors, ...). */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
+  const styles = useStyles();
+  const { colors } = useTheme();
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -24,7 +28,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {toast ? (
         <View pointerEvents="none" style={[styles.toastWrap, { top: insets.top + 10 }]}>
-          <View style={[styles.toast, toast.kind === 'error' ? styles.error : styles.success]}>
+          <View
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+            style={[styles.toast, toast.kind === 'error' ? styles.error : styles.success]}
+          >
+            <Icon name={toast.kind === 'error' ? 'alert-circle-outline' : 'checkmark-circle-outline'} size={20} color={colors.onToast} />
             <Text style={styles.text}>{toast.message}</Text>
           </View>
         </View>
@@ -38,7 +47,7 @@ export function useToast() {
 }
 
 /** Destructive-action confirmation. Alert buttons are not supported on web, so it falls back to window.confirm. */
-export function confirmAction(title: string, message: string, confirmLabel = 'Delete'): Promise<boolean> {
+export function confirmAction(title: string, message: string, confirmLabel = t('common.delete')): Promise<boolean> {
   if (Platform.OS === 'web') {
     return Promise.resolve(window.confirm(`${title}\n\n${message}`));
   }
@@ -47,7 +56,7 @@ export function confirmAction(title: string, message: string, confirmLabel = 'De
       title,
       message,
       [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
         { text: confirmLabel, style: 'destructive', onPress: () => resolve(true) },
       ],
       { cancelable: true, onDismiss: () => resolve(false) }
@@ -55,10 +64,10 @@ export function confirmAction(title: string, message: string, confirmLabel = 'De
   });
 }
 
-const styles = StyleSheet.create({
-  toastWrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
-  toast: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, maxWidth: 520, elevation: 4 },
-  success: { backgroundColor: colors.success },
-  error: { backgroundColor: colors.danger },
-  text: { color: '#fff', fontWeight: '600' },
-});
+const useStyles = makeStyles((colors) => ({
+  toastWrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center', zIndex: 1000 },
+  toast: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, maxWidth: 520, elevation: 4 },
+  success: { backgroundColor: colors.toastSuccess },
+  error: { backgroundColor: colors.toastDanger },
+  text: { color: colors.onToast, fontWeight: '600', flexShrink: 1 },
+}));
