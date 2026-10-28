@@ -3,10 +3,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { hashPassword, newSalt, passwordProblem, verifyPassword } from './password';
 import { AppError, assertCan, ROLES, type Role, type SessionUser } from './permissions';
 import { Checker } from './validate';
+import { t } from '../i18n/core';
 
 // UC-01 login and staff account management (Admin only).
-
-const LOGIN_FAILED = 'Incorrect username or password.';
 
 export async function login(db: SQLiteDatabase, username: string, password: string): Promise<SessionUser> {
   const row = await db.getFirstAsync<SessionUser & { password_hash: string; password_salt: string; is_active: number }>(
@@ -14,8 +13,8 @@ export async function login(db: SQLiteDatabase, username: string, password: stri
     username.trim()
   );
   // Same message whether the username or the password is wrong.
-  if (!row || !verifyPassword(password, row.password_salt, row.password_hash)) throw new AppError(LOGIN_FAILED);
-  if (!row.is_active) throw new AppError('This account has been deactivated. Ask an administrator.');
+  if (!row || !verifyPassword(password, row.password_salt, row.password_hash)) throw new AppError(t('auth.loginFailed'));
+  if (!row.is_active) throw new AppError(t('auth.deactivated'));
   await db.runAsync("UPDATE users SET last_login_at = datetime('now', 'localtime') WHERE user_id = ?", row.user_id);
   return { user_id: row.user_id, full_name: row.full_name, username: row.username, role: row.role };
 }
@@ -24,7 +23,7 @@ export type UserInput = { full_name: string; username: string; role: string; pas
 
 function checkUsername(c: Checker, username: string) {
   const v = username.trim();
-  if (!/^[A-Za-z0-9._]{3,30}$/.test(v)) c.fail('username', 'Use 3–30 letters, digits, dots or underscores.');
+  if (!/^[A-Za-z0-9._]{3,30}$/.test(v)) c.fail('username', t('validate.username'));
   return v;
 }
 
@@ -42,9 +41,9 @@ export async function createUser(db: SQLiteDatabase, actor: SessionUser, input: 
   assertCan(actor, 'users.manage');
   const c = new Checker();
   const value = {
-    full_name: c.text('full_name', input.full_name, 'Full name', 2, 100),
+    full_name: c.text('full_name', input.full_name, t('field.fullName'), 2, 100),
     username: checkUsername(c, input.username),
-    role: c.oneOf('role', input.role, ROLES, 'role'),
+    role: c.oneOf('role', input.role, ROLES, t('validate.chooseRole')),
     password: input.password,
   };
   const problem = passwordProblem(input.password);
@@ -56,15 +55,15 @@ export async function createUser(db: SQLiteDatabase, actor: SessionUser, input: 
 export async function updateUser(db: SQLiteDatabase, actor: SessionUser, id: number, input: { full_name: string; role: string }) {
   assertCan(actor, 'users.manage');
   const c = new Checker();
-  const full_name = c.text('full_name', input.full_name, 'Full name', 2, 100);
-  const role = c.oneOf('role', input.role, ROLES, 'role');
+  const full_name = c.text('full_name', input.full_name, t('field.fullName'), 2, 100);
+  const role = c.oneOf('role', input.role, ROLES, t('validate.chooseRole'));
   c.done();
   await db.runAsync('UPDATE users SET full_name = ?, role = ? WHERE user_id = ?', full_name, role, id);
 }
 
 export async function setUserActive(db: SQLiteDatabase, actor: SessionUser, id: number, active: boolean) {
   assertCan(actor, 'users.manage');
-  if (!active && id === actor.user_id) throw new AppError("You can't deactivate your own account.");
+  if (!active && id === actor.user_id) throw new AppError(t('auth.cannotDeactivateSelf'));
   await db.runAsync('UPDATE users SET is_active = ? WHERE user_id = ?', active ? 1 : 0, id);
 }
 

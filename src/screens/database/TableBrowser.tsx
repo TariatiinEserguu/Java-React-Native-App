@@ -1,19 +1,23 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { DataTable } from '../../components/DataTable';
 import { confirmAction, useToast } from '../../components/feedback';
-import { Badge, Button, Card, EmptyState, ErrorBanner, SectionTitle } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, ErrorBanner, focusRing, LoadingState, SectionTitle, type PressState } from '../../components/ui';
 import { useDataChange, useDbQuery } from '../../db/DataContext';
 import { friendlyError } from '../../db/errors';
 import { quoteIdent, resetDatabase } from '../../db/schema';
 import { describeTable, listTables, readTablePage } from '../../db/sqlRunner';
-import { colors, monoFont, radius } from '../../theme';
+import { useI18n } from '../../i18n';
+import { makeStyles, monoFont, radius, useTheme } from '../../theme';
 
 const PAGE_SIZE = 25;
 
 export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string) => void }) {
+  const { t, tn } = useI18n();
+  const { colors } = useTheme();
+  const styles = useStyles();
   const db = useSQLiteContext();
   const { notifyChange } = useDataChange();
   const toast = useToast();
@@ -23,8 +27,8 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
 
   const { data: tables, error } = useDbQuery(listTables);
   // Keep the selection valid when tables are dropped or rows deleted elsewhere.
-  const selected = tables && !tables.some((t) => t.name === chosen) ? (tables[0]?.name ?? null) : chosen;
-  const table = tables?.find((t) => t.name === selected);
+  const selected = tables && !tables.some((tb) => tb.name === chosen) ? (tables[0]?.name ?? null) : chosen;
+  const table = tables?.find((tb) => tb.name === selected);
   const pageCount = Math.max(1, Math.ceil((table?.rowCount ?? 0) / PAGE_SIZE));
   const page = Math.min(chosenPage, pageCount - 1);
 
@@ -40,17 +44,13 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
   };
 
   const reset = async () => {
-    const ok = await confirmAction(
-      'Reset database?',
-      'All tables (including ones you created) will be dropped and the sample data restored.',
-      'Reset'
-    );
+    const ok = await confirmAction(t('sql.resetTitle'), t('sql.resetBody'), t('sql.reset'));
     if (!ok) return;
     setResetting(true);
     try {
       await resetDatabase(db);
       notifyChange();
-      toast('Database reset to sample data');
+      toast(t('sql.resetDone'));
     } catch (e) {
       toast(friendlyError(e), 'error');
     } finally {
@@ -61,36 +61,43 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
   return (
     <View>
       {error ? <ErrorBanner message={error} /> : null}
-      <SectionTitle>Tables & views</SectionTitle>
+      <SectionTitle>{t('sql.tables')}</SectionTitle>
+      {!tables && !error ? <LoadingState /> : null}
       <View style={styles.tableGrid}>
-        {tables?.map((t) => (
-          <Pressable key={t.name} onPress={() => select(t.name)} style={[styles.tableItem, t.name === selected && styles.tableItemActive]}>
-            <Text style={[styles.tableName, t.name === selected && { color: colors.primary }]}>{t.name}</Text>
+        {tables?.map((item) => (
+          <Pressable
+            key={item.name}
+            accessibilityRole="button"
+            accessibilityState={{ selected: item.name === selected }}
+            onPress={() => select(item.name)}
+            style={(state: PressState) => [styles.tableItem, state.hovered && { backgroundColor: colors.surfaceAlt }, item.name === selected && styles.tableItemActive, focusRing(colors, state)]}
+          >
+            <Text style={[styles.tableName, item.name === selected && { color: colors.primary }]}>{item.name}</Text>
             <Text style={styles.tableMeta}>
-              {t.type} · {t.rowCount === null ? '?' : t.rowCount} rows
+              {item.type} · {item.rowCount === null ? '?' : tn('count.rows', item.rowCount)}
             </Text>
           </Pressable>
         ))}
       </View>
-      {tables?.length === 0 ? <EmptyState text="The database has no tables." /> : null}
+      {tables?.length === 0 ? <EmptyState icon="server-outline" text={t('sql.noTables')} /> : null}
 
       {table ? (
         <>
           <SectionTitle
-            right={<Button title="Query in editor" variant="ghost" small onPress={() => onOpenInEditor(`SELECT * FROM ${quoteIdent(table.name)} LIMIT 100;`)} />}
+            right={<Button title={t('sql.queryInEditor')} variant="ghost" small onPress={() => onOpenInEditor(`SELECT * FROM ${quoteIdent(table.name)} LIMIT 100;`)} />}
           >
-            Schema · {table.name}
+            {t('sql.schema', { name: table.name })}
           </SectionTitle>
           {details ? (
             <DataTable
-              columns={['#', 'Column', 'Type', 'Not null', 'Default', 'PK']}
-              rows={details.columns.map((c) => [c.cid, c.name, c.type || '—', c.notnull ? 'YES' : '', c.dflt_value, c.pk ? 'PK' : ''])}
+              columns={['#', t('sql.col.column'), t('sql.col.type'), t('sql.col.notNull'), t('sql.col.default'), 'PK']}
+              rows={details.columns.map((c) => [c.cid, c.name, c.type || '—', c.notnull ? t('common.yes') : '', c.dflt_value, c.pk ? 'PK' : ''])}
             />
           ) : null}
           {details?.foreignKeys.length ? (
             <View style={styles.fkList}>
               {details.foreignKeys.map((fk, i) => (
-                <Badge key={i} tone="info" label={`${fk.from} → ${fk.table}.${fk.to} (on delete ${fk.on_delete.toLowerCase()})`} />
+                <Badge key={i} tone="info" label={t('sql.fk', { from: fk.from, table: fk.table, to: fk.to, action: fk.on_delete.toLowerCase() })} />
               ))}
             </View>
           ) : null}
@@ -100,32 +107,32 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
             </Card>
           ) : null}
 
-          <SectionTitle>Records</SectionTitle>
+          <SectionTitle>{t('sql.records')}</SectionTitle>
           {recordsError ? <ErrorBanner message={recordsError} /> : null}
           {records ? <DataTable columns={records.columns} rows={records.rows} /> : null}
           <View style={styles.pager}>
-            <Button title="‹ Prev" variant="secondary" small disabled={page === 0} onPress={() => setPage(page - 1)} />
+            <Button title={t('common.previous')} icon="chevron-back" variant="secondary" small disabled={page === 0} onPress={() => setPage(page - 1)} />
             <Text style={styles.pageText}>
-              Page {page + 1} of {pageCount} · {table.rowCount ?? '?'} rows
+              {t('sql.page', { page: page + 1, pages: pageCount })} · {table.rowCount === null ? '?' : tn('count.rows', table.rowCount)}
             </Text>
-            <Button title="Next ›" variant="secondary" small disabled={page >= pageCount - 1} onPress={() => setPage(page + 1)} />
+            <Button title={t('common.next')} icon="chevron-forward" variant="secondary" small disabled={page >= pageCount - 1} onPress={() => setPage(page + 1)} />
           </View>
         </>
       ) : null}
 
-      <SectionTitle>Maintenance</SectionTitle>
+      <SectionTitle>{t('sql.maintenance')}</SectionTitle>
       <Card style={styles.danger}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.dangerTitle}>Reset to sample data</Text>
-          <Text style={styles.tableMeta}>Drops every table and re-creates the original schema and records.</Text>
+          <Text style={styles.dangerTitle}>{t('sql.resetHeading')}</Text>
+          <Text style={styles.tableMeta}>{t('sql.resetHint')}</Text>
         </View>
-        <Button title="Reset" variant="danger" onPress={reset} loading={resetting} />
+        <Button title={t('sql.reset')} variant="danger" onPress={reset} loading={resetting} />
       </Card>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   tableGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tableItem: {
     paddingHorizontal: 12,
@@ -144,6 +151,6 @@ const styles = StyleSheet.create({
   ddlText: { fontFamily: monoFont, fontSize: 12, color: colors.codeText },
   pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   pageText: { fontSize: 13, color: colors.muted },
-  danger: { flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: colors.dangerSoft },
+  danger: { flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: colors.danger },
   dangerTitle: { fontWeight: '600', color: colors.text },
-});
+}));

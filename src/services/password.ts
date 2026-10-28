@@ -1,3 +1,5 @@
+import { t } from '../i18n/core';
+
 /*
  * Password hashing with PBKDF2-HMAC-SHA256, in plain TypeScript so it runs the same on
  * Android, iOS, web and in the Node test suite without a native module.
@@ -188,7 +190,7 @@ export function verifyPassword(password: string, salt: string, stored: string) {
 
 export function passwordProblem(password: string): string | null {
   if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-    return 'Use at least 8 characters with a letter and a number.';
+    return t('validate.password');
   }
   return null;
 }

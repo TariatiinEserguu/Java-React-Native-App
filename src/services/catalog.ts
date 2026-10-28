@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { assertCan, type SessionUser } from './permissions';
 import { Checker } from './validate';
+import { t } from '../i18n/core';
 
 // Catalogue and master data: categories, medicines, suppliers, customers.
 // Records with history are deactivated, never deleted (BR-15).
@@ -29,7 +30,7 @@ export type CategoryInput = { category_name: string; description?: string | null
 
 function checkCategory(input: CategoryInput) {
   const c = new Checker();
-  const value = { category_name: c.text('category_name', input.category_name, 'Category name', 2, 50), description: c.optionalText('description', input.description) };
+  const value = { category_name: c.text('category_name', input.category_name, t('field.categoryName'), 2, 50), description: c.optionalText('description', input.description) };
   c.done();
   return value;
 }
@@ -69,19 +70,19 @@ export type MedicineInput = {
 
 function checkMedicine(input: MedicineInput) {
   const c = new Checker();
-  if (!input.category_id) c.fail('category_id', 'Choose a category.');
+  if (!input.category_id) c.fail('category_id', t('validate.chooseCategory'));
   const barcode = (input.barcode ?? '').trim();
-  if (barcode && !/^\d{8,14}$/.test(barcode)) c.fail('barcode', 'Barcode must be 8–14 digits.');
+  if (barcode && !/^\d{8,14}$/.test(barcode)) c.fail('barcode', t('validate.barcode'));
   const value = {
     category_id: input.category_id,
-    brand_name: c.text('brand_name', input.brand_name, 'Brand name'),
-    generic_name: c.text('generic_name', input.generic_name, 'Generic name'),
+    brand_name: c.text('brand_name', input.brand_name, t('field.brandName')),
+    generic_name: c.text('generic_name', input.generic_name, t('field.genericName')),
     strength: c.optionalText('strength', input.strength, 30),
-    dosage_form: c.oneOf('dosage_form', input.dosage_form, DOSAGE_FORMS, 'dosage form'),
-    unit: c.text('unit', input.unit, 'Unit', 1, 30),
+    dosage_form: c.oneOf('dosage_form', input.dosage_form, DOSAGE_FORMS, t('validate.chooseDosageForm')),
+    unit: c.text('unit', input.unit, t('field.unit'), 1, 30),
     barcode: barcode || null,
-    selling_price: c.int('selling_price', input.selling_price, 'Selling price'),
-    min_stock_level: c.int('min_stock_level', input.min_stock_level, 'Minimum stock', { max: 100_000 }),
+    selling_price: c.int('selling_price', input.selling_price, t('field.sellingPrice')),
+    min_stock_level: c.int('min_stock_level', input.min_stock_level, t('field.minStock'), { max: 100_000 }),
     requires_prescription: input.requires_prescription ? 1 : 0,
   };
   c.done();
@@ -132,7 +133,7 @@ export type SupplierInput = {
 function checkSupplier(input: SupplierInput) {
   const c = new Checker();
   const value = {
-    supplier_name: c.text('supplier_name', input.supplier_name, 'Supplier name', 2, 100),
+    supplier_name: c.text('supplier_name', input.supplier_name, t('field.supplierName'), 2, 100),
     contact_person: c.optionalText('contact_person', input.contact_person, 100),
     phone: c.phone('phone', input.phone),
     email: c.email('email', input.email),
@@ -173,7 +174,7 @@ export type CustomerInput = { full_name: string; phone?: string | null; email?: 
 function checkCustomer(input: CustomerInput) {
   const c = new Checker();
   const value = {
-    full_name: c.text('full_name', input.full_name, 'Name', 2, 100),
+    full_name: c.text('full_name', input.full_name, t('field.name'), 2, 100),
     phone: c.phone('phone', input.phone),
     email: c.email('email', input.email),
     notes: c.optionalText('notes', input.notes),
