@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 
 import { useI18n } from '../i18n';
 import { makeStyles } from '../theme';
@@ -25,10 +25,11 @@ export function Sheet({
   const { t } = useI18n();
   const styles = useStyles();
   const reduceMotion = useReducedMotion();
+  const centered = useWindowDimensions().width >= 700;
   return (
-    <Modal visible={visible} animationType={reduceMotion ? 'none' : 'slide'} transparent onRequestClose={onClose} accessibilityViewIsModal>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.backdrop}>
-        <View style={styles.sheet}>
+    <Modal visible={visible} animationType={reduceMotion ? 'none' : centered ? 'fade' : 'slide'} transparent onRequestClose={onClose} accessibilityViewIsModal>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.backdrop, centered && { justifyContent: 'center', padding: 24 }]}>
+        <View style={[styles.sheet, centered && styles.dialog]}>
           <View style={styles.titleRow}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text accessibilityRole="header" style={styles.title}>
@@ -49,10 +50,11 @@ export function Sheet({
 }
 
 const useStyles = makeStyles((colors) => ({
+  dialog: { borderRadius: 16, borderBottomWidth: 1, maxHeight: '88%' },
   backdrop: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end', alignItems: 'center' },
-  sheet: { backgroundColor: colors.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, width: '100%', maxWidth: 640, maxHeight: '90%', borderWidth: 1, borderBottomWidth: 0, borderColor: colors.border },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 18, width: '100%', maxWidth: 640, maxHeight: '90%', borderWidth: 1, borderBottomWidth: 0, borderColor: colors.border },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 12 },
-  title: { fontSize: 20, fontWeight: '700', color: colors.text },
+  title: { fontSize: 18, fontWeight: '700', letterSpacing: -0.3, color: colors.text },
   subtitle: { fontSize: 13, color: colors.muted, marginTop: 2 },
   footer: { flexDirection: 'row', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border, flexWrap: 'wrap', alignItems: 'center' },
 }));

@@ -41,7 +41,7 @@ export function LoginScreen() {
       </View>
       <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
         <View style={styles.logo}>
-          <Icon name="medkit" size={32} color={colors.onPrimary} />
+          <Icon name="medical" size={28} color={colors.onPrimary} />
         </View>
         <Text accessibilityRole="header" style={styles.title}>
           PharmaCare
@@ -92,12 +92,12 @@ export function LoginScreen() {
 const useStyles = makeStyles((colors) => ({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 8 },
   wrap: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20, maxWidth: 480, width: '100%', alignSelf: 'center' },
-  logo: { width: 64, height: 64, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  title: { fontSize: 28, fontWeight: '800', color: colors.text },
+  logo: { width: 56, height: 56, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  title: { fontSize: 26, fontWeight: '700', letterSpacing: -0.6, color: colors.text },
   subtitle: { fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  demo: { width: '100%', marginTop: 16, backgroundColor: colors.primarySoft, borderColor: colors.primarySoft },
-  demoTitle: { fontWeight: '700', color: colors.primary, marginBottom: 6 },
+  demo: { width: '100%', marginTop: 16, backgroundColor: colors.surfaceAlt },
+  demoTitle: { fontWeight: '600', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, color: colors.muted, marginBottom: 6 },
   demoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4, gap: 8 },
   demoText: { color: colors.text, flex: 1 },
   mono: { fontWeight: '700' },

@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Platform,
   Pressable,
   Switch,
@@ -15,7 +16,8 @@ import {
 } from 'react-native';
 
 import { useI18n } from '../i18n';
-import { fontSize, makeStyles, radius, space, useTheme, type Palette } from '../theme';
+import { fontSize, makeStyles, radius, radiusLg, space, transition, useTheme, type Palette } from '../theme';
+import { useReducedMotion } from './motion';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -40,7 +42,7 @@ export function focusRing(colors: Palette, state: PressState): ViewStyle {
     : {};
 }
 
-const webPointer = Platform.OS === 'web' ? ({ cursor: 'pointer' } as ViewStyle) : null;
+const webPointer = Platform.OS === 'web' ? ({ cursor: 'pointer', ...transition } as ViewStyle) : null;
 
 export function Icon({ name, size = 20, color }: { name: IconName; size?: number; color?: string }) {
   const { colors } = useTheme();
@@ -89,6 +91,7 @@ export function Button({
           borderColor: disabled && variant !== 'ghost' ? colors.disabledBg : palette.border,
         },
         !inactive && webPointer,
+        state.pressed && !inactive && { transform: [{ scale: 0.98 }] },
         focusRing(colors, state),
         style,
       ]}
@@ -107,9 +110,9 @@ export function Button({
 
 const buttonPalette = (c: Palette): Record<ButtonVariant, { bg: string; hover: string; pressed: string; fg: string; border: string }> => ({
   primary: { bg: c.primary, hover: c.primaryPressed, pressed: c.primaryPressed, fg: c.onPrimary, border: c.primary },
-  secondary: { bg: c.surface, hover: c.surfaceAlt, pressed: c.surfaceAlt, fg: c.text, border: c.borderStrong },
-  danger: { bg: c.dangerSoft, hover: c.dangerSoft, pressed: c.dangerSoft, fg: c.danger, border: c.danger },
-  ghost: { bg: 'transparent', hover: c.primarySoft, pressed: c.primarySoft, fg: c.primary, border: 'transparent' },
+  secondary: { bg: c.surface, hover: c.surfaceAlt, pressed: c.surfaceAlt, fg: c.text, border: c.border },
+  danger: { bg: c.dangerSoft, hover: c.dangerSoft, pressed: c.dangerSoft, fg: c.danger, border: c.dangerSoft },
+  ghost: { bg: 'transparent', hover: c.surfaceAlt, pressed: c.surfaceAlt, fg: c.text, border: 'transparent' },
 });
 
 /** Compact icon-only control (theme toggle, close). The label is required for screen readers and tooltips. */
@@ -194,7 +197,7 @@ export function Field({
         }}
         style={[
           styles.input,
-          focused && { borderColor: colors.primary, borderWidth: 2, paddingHorizontal: 11, paddingVertical: 9 },
+          focused && styles.inputFocused,
           error ? { borderColor: colors.danger } : null,
           input.editable === false && { backgroundColor: colors.disabledBg, color: colors.disabledText },
           input.style,
@@ -217,7 +220,7 @@ export function SearchBar({ value, onChangeText, placeholder }: { value: string;
   const styles = useStyles();
   const [focused, setFocused] = useState(false);
   return (
-    <View style={[styles.searchWrap, focused && { borderColor: colors.primary }]}>
+    <View style={[styles.searchWrap, focused && styles.inputFocused]}>
       <Icon name="search" size={18} />
       <TextInput
         value={value}
@@ -288,21 +291,46 @@ export function EmptyState({ text, hint, icon = 'file-tray-outline' }: { text: s
   const styles = useStyles();
   return (
     <View style={styles.empty}>
-      <Icon name={icon} size={28} />
+      <View style={styles.emptyIcon}>
+        <Icon name={icon} size={22} />
+      </View>
       <Text style={styles.emptyText}>{text}</Text>
       {hint ? <Text style={styles.emptyHint}>{hint}</Text> : null}
     </View>
   );
 }
 
-export function LoadingState({ text }: { text?: string }) {
+/** Pulsing placeholder block; the pulse is skipped when the OS asks for reduced motion. */
+export function Skeleton({ width = '100%', height = 14, style }: { width?: ViewStyle['width']; height?: number; style?: StyleProp<ViewStyle> }) {
   const { colors } = useTheme();
+  const reduce = useReducedMotion();
+  const [pulse] = useState(() => new Animated.Value(0.55));
+  useEffect(() => {
+    if (reduce) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(pulse, { toValue: 0.55, duration: 800, useNativeDriver: Platform.OS !== 'web' }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse, reduce]);
+  return <Animated.View style={[{ width, height, borderRadius: 6, backgroundColor: colors.surfaceAlt, opacity: reduce ? 0.8 : pulse }, style]} />;
+}
+
+/** Skeleton rows while data loads; announces itself as busy to screen readers. */
+export function LoadingState({ text, rows = 4 }: { text?: string; rows?: number }) {
   const { t } = useI18n();
   const styles = useStyles();
   return (
-    <View style={styles.empty} accessibilityRole="progressbar" accessibilityLabel={text ?? t('common.loading')}>
-      <ActivityIndicator color={colors.primary} />
-      <Text style={styles.emptyHint}>{text ?? t('common.loading')}</Text>
+    <View style={styles.loading} accessibilityRole="progressbar" accessibilityLabel={text ?? t('common.loading')}>
+      {Array.from({ length: rows }, (_, i) => (
+        <View key={i} style={styles.loadingRow}>
+          <Skeleton width={`${70 - (i % 3) * 12}%`} height={14} />
+          <Skeleton width={`${40 - (i % 2) * 10}%`} height={11} />
+        </View>
+      ))}
     </View>
   );
 }
@@ -348,7 +376,7 @@ export function Segmented<T extends string>({
   );
 }
 
-export function Stat({ label, value, note, tone, onPress }: { label: string; value: string; note?: string; tone?: BadgeTone; onPress?: () => void }) {
+export function Stat({ label, value, note, tone, icon, onPress }: { label: string; value: string; note?: string; tone?: BadgeTone; icon?: IconName; onPress?: () => void }) {
   const { colors } = useTheme();
   const styles = useStyles();
   return (
@@ -365,7 +393,12 @@ export function Stat({ label, value, note, tone, onPress }: { label: string; val
         focusRing(colors, state),
       ]}
     >
-      <Text style={styles.statLabel}>{label}</Text>
+      <View style={styles.statHead}>
+        <Text style={styles.statLabel} numberOfLines={1}>
+          {label}
+        </Text>
+        {icon ? <Icon name={icon} size={16} color={tone ? toneColor(colors, tone) : colors.muted} /> : null}
+      </View>
       <Text style={[styles.statValue, { color: toneColor(colors, tone) }]}>{value}</Text>
       {note ? <Text style={styles.hint}>{note}</Text> : null}
     </Pressable>
@@ -436,30 +469,30 @@ export const screen = {
 export const useStyles = makeStyles((colors) => ({
   button: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: radius,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 42,
   },
   buttonSmall: { paddingHorizontal: 12, paddingVertical: 6, minHeight: 36 },
   buttonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 1 },
-  buttonText: { fontWeight: '600', fontSize: fontSize.body, textAlign: 'center', flexShrink: 1 },
+  buttonText: { fontWeight: '600', fontSize: fontSize.body, letterSpacing: -0.1, textAlign: 'center', flexShrink: 1 },
   buttonTextSmall: { fontSize: fontSize.small },
-  iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: 36, height: 36, borderRadius: radius, alignItems: 'center', justifyContent: 'center' },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius + 2,
+    borderRadius: radiusLg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
+    padding: 16,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.lg },
-  title: { fontSize: fontSize.title, fontWeight: '700', color: colors.text },
+  title: { fontSize: fontSize.title, fontWeight: '700', color: colors.text, letterSpacing: -0.4 },
   subtitle: { fontSize: fontSize.small, color: colors.muted, marginTop: 2 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: space.sm },
-  sectionTitle: { fontSize: fontSize.lead, fontWeight: '700', color: colors.text, flexShrink: 1 },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: space.sm },
+  sectionTitle: { fontSize: fontSize.small, fontWeight: '600', color: colors.muted, flexShrink: 1, textTransform: 'uppercase', letterSpacing: 0.6 },
   field: { marginBottom: space.md },
   label: { fontSize: fontSize.small, fontWeight: '600', color: colors.text, marginBottom: 6 },
   input: {
@@ -474,6 +507,7 @@ export const useStyles = makeStyles((colors) => ({
     minHeight: 44,
   },
   inputError: { borderColor: colors.danger },
+  inputFocused: { borderColor: colors.primary, ...(Platform.OS === 'web' ? ({ boxShadow: `0 0 0 3px ${colors.primarySoft}` } as object) : null) },
   errorText: { color: colors.danger, fontSize: fontSize.caption, marginTop: 4 },
   hint: { color: colors.muted, fontSize: fontSize.caption, marginTop: 4 },
   searchWrap: {
@@ -494,30 +528,34 @@ export const useStyles = makeStyles((colors) => ({
   badgeText: { fontSize: fontSize.caption, fontWeight: '600' },
   chip: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
-    minHeight: 36,
+    minHeight: 34,
     justifyContent: 'center',
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipActive: { backgroundColor: colors.text, borderColor: colors.text },
   chipText: { fontSize: fontSize.small, color: colors.text },
-  chipTextActive: { color: colors.onPrimary, fontWeight: '600' },
-  empty: { alignItems: 'center', gap: 6, paddingVertical: 28, paddingHorizontal: space.lg },
+  chipTextActive: { color: colors.bg, fontWeight: '600' },
+  empty: { alignItems: 'center', gap: 6, paddingVertical: 32, paddingHorizontal: space.lg },
+  emptyIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   emptyText: { textAlign: 'center', color: colors.text, fontSize: fontSize.body, fontWeight: '600' },
   emptyHint: { textAlign: 'center', color: colors.muted, fontSize: fontSize.small },
-  errorBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, backgroundColor: colors.dangerSoft, borderRadius: radius, padding: space.md, marginBottom: space.md },
+  loading: { gap: 10 },
+  loadingRow: { gap: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radiusLg, padding: 16 },
+  errorBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, backgroundColor: colors.dangerSoft, borderRadius: radius, borderWidth: 1, borderColor: colors.danger + '33', padding: space.md, marginBottom: space.md },
   errorBannerText: { color: colors.danger, flex: 1, fontSize: fontSize.small },
-  segment: { flexDirection: 'row', backgroundColor: colors.surfaceAlt, borderRadius: radius, padding: 3, marginBottom: space.md },
-  segmentItem: { flex: 1, paddingVertical: 8, paddingHorizontal: 6, borderRadius: radius - 2, alignItems: 'center', justifyContent: 'center', minHeight: 40 },
+  segment: { flexDirection: 'row', backgroundColor: colors.surfaceAlt, borderRadius: radius + 2, padding: 3, marginBottom: space.md },
+  segmentItem: { flex: 1, paddingVertical: 7, paddingHorizontal: 6, borderRadius: radius, alignItems: 'center', justifyContent: 'center', minHeight: 38 },
   segmentActive: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   segmentText: { fontWeight: '600', fontSize: fontSize.small, color: colors.muted, textAlign: 'center' },
   segmentTextActive: { color: colors.text },
   stat: { flexGrow: 1, flexBasis: 160 },
-  statLabel: { fontSize: fontSize.small, color: colors.muted, fontWeight: '600' },
-  statValue: { fontSize: fontSize.title, fontWeight: '700', color: colors.text, marginVertical: 4, fontVariant: ['tabular-nums'] },
+  statHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  statLabel: { fontSize: fontSize.small, color: colors.muted, fontWeight: '500', flexShrink: 1 },
+  statValue: { fontSize: 24, fontWeight: '700', color: colors.text, marginTop: 8, marginBottom: 2, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   listItem: { paddingVertical: space.md, marginBottom: space.sm },
   kv: { flexDirection: 'row', justifyContent: 'space-between', gap: space.md, paddingVertical: 4 },

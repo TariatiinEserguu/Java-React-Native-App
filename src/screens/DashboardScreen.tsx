@@ -32,16 +32,18 @@ export function DashboardScreen({ onNavigate }: { onNavigate: (tab: string) => v
               label={ownOnly ? t('dashboard.mySalesToday') : t('dashboard.netSalesToday')}
               value={money(data.stats.today_net)}
               note={tn('count.orders', data.stats.today_orders)}
+              icon="cash-outline"
             />
             <Stat
               label={t('dashboard.sellableUnits')}
               value={formatNumber(data.stats.sellable_units)}
               note={tn('count.activeMedicines', data.stats.active_medicines)}
+              icon="layers-outline"
             />
-            <Stat label={t('dashboard.lowStock')} value={String(data.stats.low_stock)} tone={data.stats.low_stock ? 'warning' : undefined} onPress={() => onNavigate('medicines')} />
-            <Stat label={t('dashboard.nearExpiry')} value={String(data.stats.near_expiry)} tone={data.stats.near_expiry ? 'warning' : undefined} onPress={() => onNavigate('inventory')} />
-            <Stat label={t('dashboard.expired')} value={String(data.stats.expired)} tone={data.stats.expired ? 'danger' : undefined} onPress={() => onNavigate('inventory')} />
-            <Stat label={t('dashboard.stockValue')} value={money(data.stats.inventory_value)} />
+            <Stat icon="trending-down-outline" label={t('dashboard.lowStock')} value={String(data.stats.low_stock)} tone={data.stats.low_stock ? 'warning' : undefined} onPress={() => onNavigate('medicines')} />
+            <Stat icon="time-outline" label={t('dashboard.nearExpiry')} value={String(data.stats.near_expiry)} tone={data.stats.near_expiry ? 'warning' : undefined} onPress={() => onNavigate('inventory')} />
+            <Stat icon="warning-outline" label={t('dashboard.expired')} value={String(data.stats.expired)} tone={data.stats.expired ? 'danger' : undefined} onPress={() => onNavigate('inventory')} />
+            <Stat icon="wallet-outline" label={t('dashboard.stockValue')} value={money(data.stats.inventory_value)} />
           </View>
 
           <SectionTitle>{t('dashboard.expiryAlerts')}</SectionTitle>
@@ -100,7 +102,7 @@ export function DashboardScreen({ onNavigate }: { onNavigate: (tab: string) => v
 const useStyles = makeStyles((colors) => ({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
-  name: { fontSize: 15, fontWeight: '600', color: colors.text },
+  name: { fontSize: 14, fontWeight: '600', color: colors.text },
   muted: { fontSize: 12, color: colors.muted, paddingVertical: 2 },
   amount: { fontSize: 15, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
 }));

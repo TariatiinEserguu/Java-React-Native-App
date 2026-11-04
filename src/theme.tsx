@@ -40,69 +40,69 @@ export type Palette = {
 };
 
 const light: Palette = {
-  bg: '#F4F7F7',
+  bg: '#F8F8F9',
   surface: '#FFFFFF',
-  surfaceAlt: '#ECF1F1',
-  border: '#DCE4E4',
-  borderStrong: '#7B9092',
-  text: '#14282A',
-  muted: '#556B6D',
+  surfaceAlt: '#F1F1F3',
+  border: '#E6E6EA',
+  borderStrong: '#A3A5AF',
+  text: '#0E0F13',
+  muted: '#5E6069',
   primary: '#0F766E',
   primaryPressed: '#0B5F58',
-  primarySoft: '#E1F1EF',
+  primarySoft: '#E3F3F0',
   onPrimary: '#FFFFFF',
   danger: '#B42318',
-  dangerSoft: '#FDECEA',
+  dangerSoft: '#FDEDEB',
   success: '#067647',
-  successSoft: '#E3F5EC',
+  successSoft: '#E4F5EC',
   warning: '#B54708',
-  warningSoft: '#FEF1DE',
-  info: '#2A55A8',
-  infoSoft: '#E8EEFB',
-  neutralSoft: '#ECEFF1',
-  disabledBg: '#E6ECEC',
-  disabledText: '#7C8D8F',
+  warningSoft: '#FEF2E0',
+  info: '#3451B2',
+  infoSoft: '#EAEEFB',
+  neutralSoft: '#EEEEF1',
+  disabledBg: '#EDEDF0',
+  disabledText: '#80828C',
   focusRing: '#0F766E',
-  overlay: 'rgba(15, 30, 32, 0.45)',
-  toastSuccess: '#067647',
-  toastDanger: '#B42318',
+  overlay: 'rgba(10, 11, 15, 0.48)',
+  toastSuccess: '#0E0F13',
+  toastDanger: '#0E0F13',
   onToast: '#FFFFFF',
-  codeBg: '#10222A',
-  codeText: '#E2E8F0',
-  codePlaceholder: '#7E919A',
+  codeBg: '#0E0F13',
+  codeText: '#E4E4E7',
+  codePlaceholder: '#7D7F89',
 };
 
 const dark: Palette = {
-  bg: '#0E1618',
-  surface: '#152123',
-  surfaceAlt: '#1C2C2F',
-  border: '#2A3C3F',
-  borderStrong: '#5F7A7D',
-  text: '#E6EEEE',
-  muted: '#9AB0B2',
-  primary: '#3DBBAE',
-  primaryPressed: '#5ACDC1',
-  primarySoft: '#17383A',
-  onPrimary: '#06201D',
-  danger: '#F4766B',
-  dangerSoft: '#3A1D1B',
-  success: '#4CCB8F',
-  successSoft: '#15321F',
-  warning: '#F2B24A',
-  warningSoft: '#3A2C10',
-  info: '#8DAEF2',
-  infoSoft: '#1B2A47',
-  neutralSoft: '#243336',
-  disabledBg: '#203033',
-  disabledText: '#6B8083',
-  focusRing: '#6FD6CB',
-  overlay: 'rgba(0, 0, 0, 0.6)',
-  toastSuccess: '#0B6B46',
-  toastDanger: '#A8281D',
-  onToast: '#FFFFFF',
-  codeBg: '#0A1215',
-  codeText: '#DCE6EA',
-  codePlaceholder: '#6F848C',
+  bg: '#09090B',
+  surface: '#111114',
+  surfaceAlt: '#1A1A1E',
+  border: '#232328',
+  borderStrong: '#4A4A53',
+  text: '#F4F4F5',
+  muted: '#A0A0AB',
+  primary: '#2DD4BF',
+  primaryPressed: '#5EEAD4',
+  primarySoft: '#10292A',
+  onPrimary: '#04201C',
+  danger: '#F87171',
+  dangerSoft: '#2B1618',
+  success: '#4ADE80',
+  successSoft: '#0F2A1B',
+  warning: '#FBBF24',
+  warningSoft: '#2B200B',
+  info: '#93A8F5',
+  infoSoft: '#141C34',
+  neutralSoft: '#202026',
+  disabledBg: '#1A1A1E',
+  disabledText: '#6B6B75',
+  focusRing: '#5EEAD4',
+  overlay: 'rgba(0, 0, 0, 0.66)',
+  toastSuccess: '#F4F4F5',
+  toastDanger: '#F4F4F5',
+  onToast: '#09090B',
+  codeBg: '#060608',
+  codeText: '#E4E4E7',
+  codePlaceholder: '#71717A',
 };
 
 export const palettes: Record<ThemeMode, Palette> = { light, dark };
@@ -110,9 +110,15 @@ export const palettes: Record<ThemeMode, Palette> = { light, dark };
 export const monoFont = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
 /** Shared scales so spacing, corners and type stay consistent across screens. */
-export const radius = 10;
+export const radius = 8;
+/** Cards, sheets and dialogs. */
+export const radiusLg = 12;
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
-export const fontSize = { caption: 12, small: 13, body: 15, lead: 16, title: 22, display: 28 } as const;
+export const fontSize = { caption: 12, small: 13, body: 14, lead: 16, title: 22, display: 28 } as const;
+
+/** Web-only CSS transition so hover/focus changes ease instead of snapping. Ignored on native. */
+export const transition: object =
+  Platform.OS === 'web' ? { transitionProperty: 'background-color, border-color, color, opacity, transform, box-shadow', transitionDuration: '120ms', transitionTimingFunction: 'ease-out' } : {};
 
 const STORAGE_KEY = 'pharmacare.theme';
 

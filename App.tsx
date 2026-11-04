@@ -19,7 +19,7 @@ import { MoreScreen } from './src/screens/more/MoreScreen';
 import { SellScreen } from './src/screens/SellScreen';
 import { roleLabel } from './src/services/permissions';
 import { SessionProvider, useSession } from './src/session';
-import { makeStyles, ThemeProvider, useTheme } from './src/theme';
+import { makeStyles, ThemeProvider, transition, useTheme } from './src/theme';
 
 type TabScreen = ComponentType<{ onNavigate: (tab: string) => void }>;
 
@@ -97,23 +97,21 @@ function Shell() {
   const { width } = useWindowDimensions();
   const { t } = useI18n();
   const { user, touch } = useSession();
-  const { colors } = useTheme();
   const styles = useStyles();
   const wide = width >= WIDE_BREAKPOINT;
   const [active, setActive] = useState(TABS[0].key);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} onTouchStart={touch} onPointerDown={touch}>
-      <View style={styles.appBar}>
-        <View style={styles.brand} accessibilityRole="header">
-          <Icon name="medkit" size={22} color={colors.primary} />
-          <Text style={styles.brandText}>PharmaCare</Text>
+      {wide ? null : (
+        <View style={styles.appBar}>
+          <Brand />
+          <View style={{ flex: 1 }} />
+          {user && width >= 480 ? <Text style={styles.appBadge}>{roleLabel(user.role)}</Text> : null}
+          <LanguageSwitch />
+          <ThemeToggle />
         </View>
-        <View style={{ flex: 1 }} />
-        {user && width >= 480 ? <Text style={styles.appBadge}>{roleLabel(user.role)}</Text> : null}
-        <LanguageSwitch />
-        <ThemeToggle />
-      </View>
+      )}
 
       <View style={styles.body}>
         {wide ? <NavRail active={active} onSelect={setActive} /> : null}
@@ -139,14 +137,54 @@ function Shell() {
   );
 }
 
-function NavRail({ active, onSelect }: { active: string; onSelect: (key: string) => void }) {
-  const { t } = useI18n();
+function Brand() {
+  const { colors } = useTheme();
   const styles = useStyles();
   return (
-    <View accessibilityRole="tablist" accessibilityLabel={t('nav.main')} style={styles.rail}>
-      {TABS.map((tab) => (
-        <TabButton key={tab.key} tab={tab} focused={tab.key === active} onPress={() => onSelect(tab.key)} layout="rail" />
-      ))}
+    <View style={styles.brand} accessibilityRole="header">
+      <View style={styles.brandMark}>
+        <Icon name="medical" size={15} color={colors.onPrimary} />
+      </View>
+      <Text style={styles.brandText}>PharmaCare</Text>
+    </View>
+  );
+}
+
+function NavRail({ active, onSelect }: { active: string; onSelect: (key: string) => void }) {
+  const { t } = useI18n();
+  const { user } = useSession();
+  const styles = useStyles();
+  return (
+    <View style={styles.rail}>
+      <View style={styles.railBrand}>
+        <Brand />
+      </View>
+      <View accessibilityRole="tablist" accessibilityLabel={t('nav.main')} style={{ gap: 2, flex: 1 }}>
+        {TABS.map((tab) => (
+          <TabButton key={tab.key} tab={tab} focused={tab.key === active} onPress={() => onSelect(tab.key)} layout="rail" />
+        ))}
+      </View>
+      <View style={styles.railFooter}>
+        {user ? (
+          <View style={styles.userRow}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{user.full_name.trim().charAt(0).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={styles.userName}>
+                {user.full_name}
+              </Text>
+              <Text numberOfLines={1} style={styles.userRole}>
+                {roleLabel(user.role)}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        <View style={styles.railPrefs}>
+          <LanguageSwitch />
+          <ThemeToggle />
+        </View>
+      </View>
     </View>
   );
 }
@@ -156,7 +194,7 @@ function TabButton({ tab, focused, onPress, layout }: { tab: (typeof TABS)[numbe
   const { colors } = useTheme();
   const styles = useStyles();
   const rail = layout === 'rail';
-  const color = focused ? colors.primary : colors.muted;
+  const color = rail ? (focused ? colors.text : colors.muted) : focused ? colors.primary : colors.muted;
   return (
     <Pressable
       accessibilityRole="tab"
@@ -165,13 +203,14 @@ function TabButton({ tab, focused, onPress, layout }: { tab: (typeof TABS)[numbe
       onPress={onPress}
       style={(state: PressState) => [
         rail ? styles.railItem : styles.tab,
-        rail && focused && { backgroundColor: colors.primarySoft },
-        rail && state.hovered && !focused && { backgroundColor: colors.surfaceAlt },
+        rail && focused && { backgroundColor: colors.surfaceAlt },
+        rail && state.hovered && !focused && { backgroundColor: colors.surfaceAlt + '99' },
+        !rail && state.pressed && { opacity: 0.6 },
         focusRing(colors, state),
       ]}
     >
       <Icon name={focused ? tab.iconActive : tab.icon} size={rail ? 20 : 22} color={color} />
-      <Text numberOfLines={1} style={[rail ? styles.railLabel : styles.tabLabel, { color }, focused && { fontWeight: '700' }]}>
+      <Text numberOfLines={1} style={[rail ? styles.railLabel : styles.tabLabel, { color }, focused && { fontWeight: '600' }]}>
         {t(tab.label)}
       </Text>
     </Pressable>
@@ -192,13 +231,14 @@ const useStyles = makeStyles((colors) => ({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  brandText: { fontSize: 17, fontWeight: '700', color: colors.primary },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  brandMark: { width: 26, height: 26, borderRadius: 7, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  brandText: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.3 },
   appBadge: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.primary,
-    backgroundColor: colors.primarySoft,
+    color: colors.muted,
+    backgroundColor: colors.surfaceAlt,
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 999,
@@ -213,8 +253,16 @@ const useStyles = makeStyles((colors) => ({
     paddingTop: 6,
   },
   tab: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4, minHeight: 48, borderRadius: 8 },
-  tabLabel: { fontSize: 11, fontWeight: '600', maxWidth: '100%', paddingHorizontal: 2 },
-  rail: { width: 220, padding: 12, gap: 4, backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border },
-  railItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 10, minHeight: 44, borderRadius: 10 },
-  railLabel: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  tabLabel: { fontSize: 11, fontWeight: '500', maxWidth: '100%', paddingHorizontal: 2 },
+  rail: { width: 232, padding: 12, backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border },
+  railBrand: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 18 },
+  railItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, minHeight: 38, borderRadius: 8, ...transition },
+  railLabel: { fontSize: 14, fontWeight: '500', flexShrink: 1 },
+  railFooter: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
+  userRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4 },
+  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
+  userName: { fontSize: 13, fontWeight: '600', color: colors.text },
+  userRole: { fontSize: 12, color: colors.muted },
+  railPrefs: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 }));
