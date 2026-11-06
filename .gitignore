@@ -43,11 +43,6 @@ yarn-error.*
 /ios
 /android
 
-# Claude Code / AI coding tool local files
-.claude/
-CLAUDE.md
-CLAUDE.local.md
-.claudeignore
 .cursor/
 .aider*
 
@@ -79,4 +74,3 @@ coverage/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-
