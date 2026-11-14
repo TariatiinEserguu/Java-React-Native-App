@@ -286,7 +286,7 @@ flowchart TB
 | Framework | **Expo (React Native)**, SDK 58 | Already used by this repository |
 | Language | TypeScript | |
 | Database | **`expo-sqlite`** | Transactions, `PRAGMA user_version` migrations, `backupDatabaseAsync` for backup/restore |
-| Navigation | Custom bottom tabs + a "More" menu; move to **Expo Router** if more screens are added | Per project guidelines in `AGENTS.md` |
+| Navigation | Custom bottom tabs + a "More" menu; move to **Expo Router** if more screens are added | — |
 | Password hashing | PBKDF2-HMAC-SHA256 in plain TypeScript (`src/services/password.ts`) | No native module needed; verified against Node's crypto |
 | Backup file sharing (future) | `expo-sharing` + `expo-file-system` / `expo-document-picker` | To copy the backup off the phone; install with `npx expo install` |
 | Tests | Node's test runner + built-in `node:sqlite` running the real schema and services (`npm test`) | 22 automated tests |
