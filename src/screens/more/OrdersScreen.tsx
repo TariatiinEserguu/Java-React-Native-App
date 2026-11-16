@@ -1,12 +1,13 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
+import { Text } from '../../components/Text';
 import { useToast } from '../../components/feedback';
 import { FormModal } from '../../components/FormModal';
 import { useSubmit } from '../../components/hooks';
 import { Sheet } from '../../components/Sheet';
-import { Badge, Button, Card, Chip, EmptyState, ErrorBanner, Field, KeyValue, ListItem, LoadingState, SearchBar, SectionTitle, ToggleField, type BadgeTone } from '../../components/ui';
+import { Badge, Button, Card, Chip, EmptyState, ErrorBanner, Field, KeyValue, ListGroup, ListItem, LoadingState, SearchBar, SectionTitle, ToggleField, type BadgeTone } from '../../components/ui';
 import { useDbQuery } from '../../db/DataContext';
 import { getOrderDetail, listOrders, type OrderLine, type OrderStatus } from '../../db/repository';
 import { dateTime, money } from '../../format';
@@ -57,22 +58,26 @@ export function OrdersScreen() {
       {error ? <ErrorBanner message={error} /> : null}
       {!orders && !error ? <LoadingState /> : null}
       {orders?.length === 0 ? <EmptyState icon="receipt-outline" text={t('orders.empty')} hint={t('orders.emptyHint')} /> : null}
-      {orders?.map((o, i) => (
-        <ListItem index={i} key={o.order_id} onPress={() => setSelected(o.order_id)}>
-          <View style={styles.top}>
-            <Text style={styles.name}>{o.order_number}</Text>
-            <View style={{ flex: 1 }} />
-            <Badge label={o.status === 'COMPLETED' && o.refunded_amount ? t('order.partRefunded') : t(`order.${o.status}`)} tone={o.refunded_amount ? 'warning' : orderTone[o.status]} />
-          </View>
-          <View style={styles.top}>
-            <Text style={styles.muted}>
-              {dateTime(o.created_at)} · {o.customer_name ?? t('common.walkIn')} · {tn('count.items', o.item_count)} · {o.staff_name}
-            </Text>
-            <View style={{ flex: 1 }} />
-            <Text style={styles.amount}>{money(o.total_amount - o.refunded_amount)}</Text>
-          </View>
-        </ListItem>
-      ))}
+      {orders?.length ? (
+        <ListGroup>
+          {orders.map((o, i) => (
+            <ListItem index={i} key={o.order_id} onPress={() => setSelected(o.order_id)}>
+              <View style={styles.top}>
+                <Text style={styles.name}>{o.order_number}</Text>
+                <View style={{ flex: 1 }} />
+                <Badge label={o.status === 'COMPLETED' && o.refunded_amount ? t('order.partRefunded') : t(`order.${o.status}`)} tone={o.refunded_amount ? 'warning' : orderTone[o.status]} />
+              </View>
+              <View style={styles.top}>
+                <Text style={styles.muted}>
+                  {dateTime(o.created_at)} · {o.customer_name ?? t('common.walkIn')} · {tn('count.items', o.item_count)} · {o.staff_name}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text style={styles.amount}>{money(o.total_amount - o.refunded_amount)}</Text>
+              </View>
+            </ListItem>
+          ))}
+        </ListGroup>
+      ) : null}
       <OrderDetail orderId={selected} onClose={() => setSelected(null)} />
     </View>
   );

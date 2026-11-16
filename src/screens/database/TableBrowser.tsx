@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
+import { Text } from '../../components/Text';
 import { DataTable } from '../../components/DataTable';
 import { Badge, Button, Card, EmptyState, ErrorBanner, focusRing, LoadingState, SectionTitle, type PressState } from '../../components/ui';
 import { useDbQuery } from '../../db/DataContext';

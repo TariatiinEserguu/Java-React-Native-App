@@ -1,10 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { IBMPlexSans_400Regular } from '@expo-google-fonts/ibm-plex-sans/400Regular';
+import { IBMPlexSans_500Medium } from '@expo-google-fonts/ibm-plex-sans/500Medium';
+import { IBMPlexSans_600SemiBold } from '@expo-google-fonts/ibm-plex-sans/600SemiBold';
+import { IBMPlexSans_700Bold } from '@expo-google-fonts/ibm-plex-sans/700Bold';
+import { loadAsync } from 'expo-font';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import { Animated, StyleSheet, Text, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
+import { Animated, StyleSheet, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Text } from './src/components/Text';
+import { PharmacyCross } from './src/components/brand';
 import { LanguageSwitch, ThemeToggle } from './src/components/PreferenceControls';
 import { ToastProvider } from './src/components/feedback';
 import { duration, timing, useAnimatedNumber, useIndicator, usePop, useReducedMotion } from './src/components/motion';
@@ -18,12 +25,13 @@ import { InventoryScreen } from './src/screens/InventoryScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { MedicinesScreen } from './src/screens/MedicinesScreen';
 import { MoreScreen } from './src/screens/more/MoreScreen';
+import type { Intent, Navigate } from './src/screens/navigation';
 import { SellScreen } from './src/screens/SellScreen';
 import { roleLabel } from './src/services/permissions';
 import { SessionProvider, useSession } from './src/session';
 import { makeStyles, ThemeProvider, transition, useTheme } from './src/theme';
 
-type TabScreen = ComponentType<{ onNavigate: (tab: string) => void }>;
+type TabScreen = ComponentType<{ onNavigate: Navigate; intent?: Intent | null }>;
 
 const TABS: { key: string; label: TranslationKey; icon: IconName; iconActive: IconName; Screen: TabScreen }[] = [
   { key: 'dashboard', label: 'nav.dashboard', icon: 'speedometer-outline', iconActive: 'speedometer', Screen: DashboardScreen },
@@ -58,12 +66,16 @@ export default function App() {
   );
 }
 
-/** Holds the screen back for a moment until the icon font is ready, so icons never pop in as blanks. */
+/** Holds the screen back for a moment until the icon font and the typeface are ready, so nothing pops in. */
 function FontGate({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    Ionicons.loadFont().then(
+    // Only the four weights the app uses are bundled (imported per weight, not the whole family).
+    Promise.all([
+      Ionicons.loadFont(),
+      loadAsync({ IBMPlexSans_400Regular, IBMPlexSans_500Medium, IBMPlexSans_600SemiBold, IBMPlexSans_700Bold }),
+    ]).then(
       () => setReady(true),
       () => setReady(true)
     );
@@ -102,6 +114,11 @@ function Shell() {
   const styles = useStyles();
   const wide = width >= WIDE_BREAKPOINT;
   const [active, setActive] = useState(TABS[0].key);
+  const [intent, setIntent] = useState<(Intent & { tab: string }) | null>(null);
+  const navigate: Navigate = (tab, value) => {
+    setActive(tab);
+    if (value) setIntent({ tab, value, id: Date.now() });
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} onTouchStart={touch} onPointerDown={touch}>
@@ -123,7 +140,7 @@ function Shell() {
           {TABS.map(({ key, Screen }) => (
             <TabPane key={key} active={key === active}>
               <ScreenActivity active={key === active}>
-                <Screen onNavigate={setActive} />
+                <Screen onNavigate={navigate} intent={intent?.tab === key ? intent : null} />
               </ScreenActivity>
             </TabPane>
           ))}
@@ -184,13 +201,10 @@ function BottomTabs({ active, onSelect, bottomInset }: { active: string; onSelec
 }
 
 function Brand() {
-  const { colors } = useTheme();
   const styles = useStyles();
   return (
     <View style={styles.brand} accessibilityRole="header">
-      <View style={styles.brandMark}>
-        <Icon name="medical" size={15} color={colors.onPrimary} />
-      </View>
+      <PharmacyCross size={18} />
       <Text style={styles.brandText}>PharmaCare</Text>
     </View>
   );

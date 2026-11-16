@@ -1,7 +1,8 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState, type ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
+import { Text } from '../../components/Text';
 import { confirmAction, useToast } from '../../components/feedback';
 import { Enter } from '../../components/motion';
 import { Badge, Button, Card, Icon, KeyValue, LoadingState, SectionTitle } from '../../components/ui';

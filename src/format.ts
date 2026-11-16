@@ -58,6 +58,20 @@ export function dateTime(value: string | null) {
   return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+const MN_WEEKDAYS = ['Ням', 'Даваа', 'Мягмар', 'Лхагва', 'Пүрэв', 'Баасан', 'Бямба'];
+
+/** Full date with weekday for page headers: "Monday, November 16, 2026" / "2026 оны 11-р сарын 16, Даваа гараг". */
+export function longDate(date: Date = new Date()) {
+  if (getLanguage() === 'mn') return `${mongolianDate(date, true)}, ${MN_WEEKDAYS[date.getDay()]} гараг`;
+  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+/** Time of day: "14:05". */
+export function timeOfDay(value: string | null) {
+  const date = value ? parseSqliteDate(value) : null;
+  return date ? `${pad(date.getHours())}:${pad(date.getMinutes())}` : '—';
+}
+
 /** Helper text for expiry dates: "in 23 days", "expired 3 days ago". */
 export function daysLabel(days: number) {
   if (days === 0) return t('days.today');

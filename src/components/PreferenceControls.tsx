@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+import { Animated, Pressable, View } from 'react-native';
 
+import { Text } from './Text';
 import { LANGUAGES, useI18n, type Language } from '../i18n';
 import { makeStyles, useTheme, type ThemeMode } from '../theme';
 import { spring, springTo, useAnimatedNumber, useIndicator, useReducedMotion } from './motion';

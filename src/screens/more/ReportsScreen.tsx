@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
+import { Text } from '../../components/Text';
 import { DataTable } from '../../components/DataTable';
 import { SelectField } from '../../components/SelectField';
 import { Chip, EmptyState, ErrorBanner, LoadingState } from '../../components/ui';

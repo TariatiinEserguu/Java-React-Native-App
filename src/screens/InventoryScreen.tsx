@@ -1,7 +1,8 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
+import { Text } from '../components/Text';
 import { confirmAction, useToast } from '../components/feedback';
 import { FormModal } from '../components/FormModal';
 import { useAction, useSubmit } from '../components/hooks';
@@ -16,6 +17,7 @@ import {
   ErrorBanner,
   Field,
   KeyValue,
+  ListGroup,
   ListItem,
   LoadingState,
   ScreenHeader,
@@ -33,6 +35,7 @@ import { adjustStock, receiveBatch, setBatchActive, writeOffStock } from '../ser
 import { can } from '../services/permissions';
 import { useUser } from '../session';
 import { makeStyles, useTheme } from '../theme';
+import { useIntent, type Intent } from './navigation';
 
 const VIEWS: [BatchView, TranslationKey][] = [
   ['all', 'inventory.view.all'],
@@ -63,7 +66,7 @@ const emptyReceive = () => ({
   received_date: todayIso(),
 });
 
-export function InventoryScreen() {
+export function InventoryScreen({ intent }: { intent?: Intent | null }) {
   const { t } = useI18n();
   const styles = useStyles();
   const { colors } = useTheme();
@@ -76,12 +79,20 @@ export function InventoryScreen() {
   const { data: log } = useDbQuery((db) => listMovements(db, { limit: 100 }), []);
   const [selected, setSelected] = useState<number | null>(null);
   const [receiving, setReceiving] = useState(false);
+  // From Today: "Expired batches" / "Expiring soon" open the matching view, "Receive stock" the form.
+  useIntent(intent, (value) => {
+    if (value === 'receive') {
+      if (canReceive) setReceiving(true);
+      return;
+    }
+    setMode('batches');
+    setView(value === 'expired' ? 'expired' : value === 'near' ? 'near' : 'all');
+  });
 
   return (
     <ScrollView contentContainerStyle={screen.content} keyboardShouldPersistTaps="handled">
       <ScreenHeader
         title={t('inventory.title')}
-        subtitle={t('inventory.subtitle')}
         action={canReceive ? <Button title={t('inventory.receive')} icon="add" onPress={() => setReceiving(true)} /> : undefined}
       />
       <Segmented
@@ -104,24 +115,40 @@ export function InventoryScreen() {
           </ScrollView>
           {!batches && !error ? <LoadingState /> : null}
           {batches?.length === 0 ? <EmptyState icon="cube-outline" text={t('inventory.empty')} hint={t('inventory.emptyHint')} /> : null}
-          {batches?.map((b, i) => (
-            <ListItem index={i} key={b.batch_id} onPress={() => setSelected(b.batch_id)}>
-              <View style={styles.top}>
-                <Text style={styles.name}>{medicineLabel(b)}</Text>
-                <View style={{ flex: 1 }} />
-                <Badge label={t(`batch.${b.batch_state}`)} tone={batchTone[b.batch_state]} />
-              </View>
-              <Text style={styles.muted}>
-                {t('batch.summary', { batch: b.batch_number, left: b.quantity_remaining, received: b.quantity_received, supplier: b.supplier_name ?? t('common.noSupplier') })}
-              </Text>
-              <Text style={[styles.muted, b.days_to_expiry < 0 && { color: colors.danger }]}>
-                {t('batch.expires', { date: shortDate(b.expiry_date), days: daysLabel(b.days_to_expiry) })}
-              </Text>
-            </ListItem>
-          ))}
+          {batches?.length ? (
+            <ListGroup>
+              {batches.map((b, i) => {
+                // Only a batch that needs action gets colour; a normal sellable batch stays plain.
+                const expiryColor = b.batch_state === 'EXPIRED' ? colors.danger : b.batch_state === 'NEAR_EXPIRY' ? colors.warning : colors.text;
+                return (
+                  <ListItem index={i} key={b.batch_id} onPress={() => setSelected(b.batch_id)}>
+                    <View style={styles.batchRow}>
+                      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                        <View style={styles.top}>
+                          <Text style={styles.name} numberOfLines={1}>
+                            {medicineLabel(b)}
+                          </Text>
+                          {b.batch_state !== 'SELLABLE' ? <Badge label={t(`batch.${b.batch_state}`)} tone={batchTone[b.batch_state]} /> : null}
+                        </View>
+                        <Text style={styles.muted} numberOfLines={1}>
+                          {t('medicine.lot', { batch: b.batch_number })}, {b.supplier_name ?? t('common.noSupplier')}
+                        </Text>
+                      </View>
+                      <View style={styles.right}>
+                        <Text style={[styles.expiry, { color: expiryColor }]}>{shortDate(b.expiry_date)}</Text>
+                        <Text style={styles.muted}>
+                          {formatNumber(b.quantity_remaining)} / {formatNumber(b.quantity_received)}
+                        </Text>
+                      </View>
+                    </View>
+                  </ListItem>
+                );
+              })}
+            </ListGroup>
+          ) : null}
         </>
       ) : (
-        <Card style={{ paddingVertical: 4 }}>
+        <Card style={{ paddingVertical: 4, paddingHorizontal: 16 }}>
           {!log ? <LoadingState /> : null}
           {log?.length === 0 ? <EmptyState icon="swap-vertical-outline" text={t('inventory.noMovements')} /> : null}
           {log?.map((m) => (
@@ -357,4 +384,7 @@ const useStyles = makeStyles((colors) => ({
   logRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   change: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   pair: { flexDirection: 'row', gap: 10 },
+  batchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  right: { alignItems: 'flex-end', gap: 2 },
+  expiry: { fontSize: 14, fontWeight: '600' },
 }));

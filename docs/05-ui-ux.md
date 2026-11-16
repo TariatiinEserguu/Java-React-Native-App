@@ -113,8 +113,8 @@ Tapping a tile opens the filtered list (e.g. low-stock medicines).
 
 | Element | Guideline |
 | --- | --- |
-| Colours | Primary teal/green (health), neutral greys; status colours: green = OK, amber = low / near expiry, red = out / expired, blue = info. Defined once as light and dark palettes in `src/theme.tsx`; text and controls meet WCAG AA contrast (4.5:1 text, 3:1 control borders) in both |
-| Typography | System font; 22 pt titles, 16 pt body, 13 pt captions; numbers right-aligned with tabular figures |
+| Colours | Pharmacy-cross green for the brand and the main action, on a cool clinical grey-white; violet marks prescription-only (Rx) medicines. Status colour only where action is needed (amber = low stock or expiring soon, red = out of stock or expired); normal states stay uncoloured, so problems stand out. Defined once as light and dark palettes in `src/theme.tsx`; text and controls meet WCAG AA contrast (4.5:1 text, 3:1 control borders) in both |
+| Typography | IBM Plex Sans (400/500/600/700): unmistakable I/l/1 and 0/O for drug names and lot numbers, Mongolian Cyrillic and the ₮ sign, tabular figures. 24 pt titles, 15 pt body, 13 pt captions, sentence-case headings; numbers right-aligned |
 | Touch | Minimum 44 × 44 pt targets, 8 pt spacing grid, primary action at bottom within thumb reach |
 | Feedback | Toast for success, inline red text for field errors, confirmation dialog for destructive actions |
 | Empty states | Explain and offer the action, e.g. "No batches yet — **Receive stock**" |

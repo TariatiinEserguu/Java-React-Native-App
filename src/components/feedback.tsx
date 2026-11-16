@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Animated, Platform, Pressable, Text, View } from 'react-native';
+import { Alert, Animated, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Text } from './Text';
 import { t } from '../i18n/core';
 import { makeStyles, useTheme } from '../theme';
 import { spring, springTo, usePresence, useAnimatedNumber } from './motion';

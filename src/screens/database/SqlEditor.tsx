@@ -1,7 +1,8 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 
+import { Text } from '../../components/Text';
 import { DataTable } from '../../components/DataTable';
 import { Enter } from '../../components/motion';
 import { Badge, Button, Card, Chip, EmptyState, focusRing, Icon, SectionTitle, type PressState } from '../../components/ui';

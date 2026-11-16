@@ -5,7 +5,14 @@ import { readPreference, writePreference } from './preferences';
 
 export type ThemeMode = 'light' | 'dark';
 
-/** Every colour in the app comes from one of these tokens; screens never hardcode a hex value. */
+/**
+ * Every colour in the app comes from one of these tokens; screens never hardcode a hex value.
+ *
+ * The palette is a pharmacy counter's: the green of the pharmacy cross for the brand and the main
+ * action, a cool clinical grey-white ground, and colour for status only where something needs
+ * attention (amber: low or expiring soon, red: out or expired). Prescription-only medicines carry
+ * their own violet, so "Rx" never reads as a warning.
+ */
 export type Palette = {
   bg: string;
   surface: string;
@@ -26,6 +33,9 @@ export type Palette = {
   warningSoft: string;
   info: string;
   infoSoft: string;
+  /** Prescription-only marker. */
+  rx: string;
+  rxSoft: string;
   neutralSoft: string;
   disabledBg: string;
   disabledText: string;
@@ -42,70 +52,74 @@ export type Palette = {
 };
 
 const light: Palette = {
-  bg: '#F8F8F9',
+  bg: '#F2F5F3',
   surface: '#FFFFFF',
-  surfaceAlt: '#F1F1F3',
-  border: '#E6E6EA',
-  borderStrong: '#A3A5AF',
-  text: '#0E0F13',
-  muted: '#5E6069',
-  primary: '#0F766E',
-  primaryPressed: '#0B5F58',
-  primarySoft: '#E3F3F0',
+  surfaceAlt: '#EBF0ED',
+  border: '#DCE3DF',
+  borderStrong: '#97A39D',
+  text: '#1B2420',
+  muted: '#59655F',
+  primary: '#0A7F45',
+  primaryPressed: '#076638',
+  primarySoft: '#E1F2E8',
   onPrimary: '#FFFFFF',
-  danger: '#B42318',
-  dangerSoft: '#FDEDEB',
-  success: '#067647',
-  successSoft: '#E4F5EC',
-  warning: '#B54708',
-  warningSoft: '#FEF2E0',
-  info: '#3451B2',
-  infoSoft: '#EAEEFB',
-  neutralSoft: '#EEEEF1',
-  disabledBg: '#EDEDF0',
-  disabledText: '#80828C',
-  focusRing: '#0F766E',
-  overlay: 'rgba(10, 11, 15, 0.48)',
-  toastSuccess: '#0E0F13',
-  toastDanger: '#0E0F13',
+  danger: '#C42B2B',
+  dangerSoft: '#FCEBEA',
+  success: '#0A7F45',
+  successSoft: '#E1F2E8',
+  warning: '#A85006',
+  warningSoft: '#FDF0DF',
+  info: '#2F5BB7',
+  infoSoft: '#E8EEFA',
+  rx: '#6A3FB5',
+  rxSoft: '#F0EAFA',
+  neutralSoft: '#EBF0ED',
+  disabledBg: '#E7ECE9',
+  disabledText: '#7E8984',
+  focusRing: '#0A7F45',
+  overlay: 'rgba(16, 26, 21, 0.45)',
+  toastSuccess: '#1B2420',
+  toastDanger: '#1B2420',
   onToast: '#FFFFFF',
-  codeBg: '#0E0F13',
-  codeText: '#E4E4E7',
-  codePlaceholder: '#7D7F89',
+  codeBg: '#17201C',
+  codeText: '#E3E9E6',
+  codePlaceholder: '#7F8B85',
   codeWarning: '#FBBF24',
 };
 
 const dark: Palette = {
-  bg: '#09090B',
-  surface: '#111114',
-  surfaceAlt: '#1A1A1E',
-  border: '#232328',
-  borderStrong: '#4A4A53',
-  text: '#F4F4F5',
-  muted: '#A0A0AB',
-  primary: '#2DD4BF',
-  primaryPressed: '#5EEAD4',
-  primarySoft: '#10292A',
-  onPrimary: '#04201C',
-  danger: '#F87171',
-  dangerSoft: '#2B1618',
-  success: '#4ADE80',
-  successSoft: '#0F2A1B',
-  warning: '#FBBF24',
-  warningSoft: '#2B200B',
-  info: '#93A8F5',
-  infoSoft: '#141C34',
-  neutralSoft: '#202026',
-  disabledBg: '#1A1A1E',
-  disabledText: '#6B6B75',
-  focusRing: '#5EEAD4',
-  overlay: 'rgba(0, 0, 0, 0.66)',
-  toastSuccess: '#F4F4F5',
-  toastDanger: '#F4F4F5',
-  onToast: '#09090B',
-  codeBg: '#060608',
-  codeText: '#E4E4E7',
-  codePlaceholder: '#71717A',
+  bg: '#0E1512',
+  surface: '#151E1A',
+  surfaceAlt: '#1C2722',
+  border: '#27332E',
+  borderStrong: '#4C5A53',
+  text: '#E8EEEB',
+  muted: '#9DABA4',
+  primary: '#41D18A',
+  primaryPressed: '#6EDDA5',
+  primarySoft: '#13301F',
+  onPrimary: '#04210F',
+  danger: '#F47C7C',
+  dangerSoft: '#341A1A',
+  success: '#41D18A',
+  successSoft: '#13301F',
+  warning: '#F2B54C',
+  warningSoft: '#33260F',
+  info: '#93AEF2',
+  infoSoft: '#18223A',
+  rx: '#BDA4F5',
+  rxSoft: '#251C3A',
+  neutralSoft: '#1C2722',
+  disabledBg: '#1C2722',
+  disabledText: '#6A7871',
+  focusRing: '#6EDDA5',
+  overlay: 'rgba(0, 0, 0, 0.62)',
+  toastSuccess: '#E8EEEB',
+  toastDanger: '#E8EEEB',
+  onToast: '#0E1512',
+  codeBg: '#09100D',
+  codeText: '#E3E9E6',
+  codePlaceholder: '#74817B',
   codeWarning: '#FBBF24',
 };
 
@@ -113,12 +127,34 @@ export const palettes: Record<ThemeMode, Palette> = { light, dark };
 
 export const monoFont = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
+/**
+ * IBM Plex Sans in four weights. Chosen for the counter: I, l and 1 and 0 and O are unmistakable
+ * (drug names and lot numbers), it covers Mongolian Cyrillic (Ө, Ү) and the tögrög sign, and its
+ * figures are tabular, so prices line up. Loaded in App.tsx before the first screen.
+ */
+export const fonts = {
+  regular: 'IBMPlexSans_400Regular',
+  medium: 'IBMPlexSans_500Medium',
+  semibold: 'IBMPlexSans_600SemiBold',
+  bold: 'IBMPlexSans_700Bold',
+} as const;
+
+/** The font file for a weight (custom fonts select weight by family name, not fontWeight). */
+export function fontForWeight(weight: string | number | undefined) {
+  const w = weight === 'bold' ? 700 : weight === 'normal' || weight === undefined ? 400 : Number(weight);
+  if (w >= 700) return fonts.bold;
+  if (w >= 600) return fonts.semibold;
+  if (w >= 500) return fonts.medium;
+  return fonts.regular;
+}
+
 /** Shared scales so spacing, corners and type stay consistent across screens. */
-export const radius = 8;
-/** Cards, sheets and dialogs. */
-export const radiusLg = 12;
+/** Buttons, inputs, chips' inner corners. */
+export const radius = 10;
+/** Grouped lists, panels, sheets and dialogs. */
+export const radiusLg = 14;
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
-export const fontSize = { caption: 12, small: 13, body: 14, lead: 16, title: 22, display: 28 } as const;
+export const fontSize = { caption: 12, small: 13, body: 15, lead: 17, title: 24, display: 30 } as const;
 
 /**
  * Web-only CSS transition so hover/focus colour changes ease instead of snapping. Ignored on native.

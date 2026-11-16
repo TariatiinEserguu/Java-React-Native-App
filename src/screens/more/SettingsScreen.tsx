@@ -1,7 +1,8 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
+import { Text } from '../../components/Text';
 import { confirmAction, useToast } from '../../components/feedback';
 import { useAction } from '../../components/hooks';
 import { LanguageSwitch, ThemeSwitch } from '../../components/PreferenceControls';

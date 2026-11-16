@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
+import { Text } from './Text';
 import { useI18n } from '../i18n';
 import { ModalFrame } from './ModalFrame';
 import { useSheetStyles } from './Sheet';

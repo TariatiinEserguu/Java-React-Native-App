@@ -1,8 +1,9 @@
 import { useState, type ComponentType } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
+import { Text } from '../../components/Text';
 import { Enter } from '../../components/motion';
-import { Button, Icon, ListItem, ScreenHeader, screen, type IconName } from '../../components/ui';
+import { Button, Icon, ListGroup, ListItem, ScreenHeader, screen, type IconName } from '../../components/ui';
 import { useI18n, type TranslationKey } from '../../i18n';
 import { can, roleLabel, type Permission } from '../../services/permissions';
 import { useSession, useUser } from '../../session';
@@ -61,21 +62,25 @@ export function MoreScreen() {
 
   return (
     <ScrollView contentContainerStyle={screen.content}>
-      <ScreenHeader title={t('nav.more')} subtitle={`${user.full_name} · ${roleLabel(user.role)}`} />
-      {pages.map((p, i) => (
-        <ListItem index={i} key={p.key} onPress={() => setOpen(p.key)}>
-          <View style={styles.row}>
-            <View style={styles.iconWrap}>
-              <Icon name={p.icon} size={22} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>{t(p.title)}</Text>
-              <Text style={styles.muted}>{t(p.description)}</Text>
-            </View>
-            <Icon name="chevron-forward" size={20} />
-          </View>
-        </ListItem>
-      ))}
+      <ScreenHeader title={t('nav.more')} subtitle={`${user.full_name}, ${roleLabel(user.role)}`} />
+      {pages?.length ? (
+        <ListGroup>
+          {pages.map((p, i) => (
+            <ListItem index={i} key={p.key} onPress={() => setOpen(p.key)}>
+              <View style={styles.row}>
+                <View style={styles.iconWrap}>
+                  <Icon name={p.icon} size={22} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title}>{t(p.title)}</Text>
+                  <Text style={styles.muted}>{t(p.description)}</Text>
+                </View>
+                <Icon name="chevron-forward" size={20} />
+              </View>
+            </ListItem>
+          ))}
+        </ListGroup>
+      ) : null}
       <Button title={t('common.logout')} variant="secondary" icon="log-out-outline" onPress={logout} style={{ marginTop: 8 }} />
     </ScrollView>
   );

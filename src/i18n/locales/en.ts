@@ -39,7 +39,7 @@ export const en = {
 
   // ---- Navigation ----
   'nav.main': 'Main navigation',
-  'nav.dashboard': 'Dashboard',
+  'nav.dashboard': 'Today',
   'nav.medicines': 'Medicines',
   'nav.sell': 'Sell',
   'nav.inventory': 'Inventory',
@@ -276,26 +276,24 @@ export const en = {
   'table.showingFirst': 'Showing first {shown} of {total} rows',
 
   // ---- Login ----
-  'login.tagline': 'Offline pharmacy manager · data stays on this device',
+  'login.tagline': 'Pharmacy management',
   'login.username': 'Username',
   'login.password': 'Password',
   'login.showPassword': 'Show password',
   'login.hidePassword': 'Hide password',
   'login.submit': 'Log in',
-  'login.demoTitle': 'Demo accounts (prototype only)',
+  'login.demoTitle': 'Demo accounts',
   'login.useAccount': 'Use',
 
   // ---- Dashboard ----
-  'dashboard.greeting': 'Hello, {name}',
-  'dashboard.subtitle': 'live figures from the local database',
   'dashboard.mySalesToday': 'My sales today',
   'dashboard.netSalesToday': 'Net sales today',
   'dashboard.sellableUnits': 'Sellable units',
   'dashboard.lowStock': 'Low / out of stock',
   'dashboard.nearExpiry': 'Near expiry',
-  'dashboard.expired': 'Expired (write off)',
+  'dashboard.expired': 'Expired',
   'dashboard.stockValue': 'Stock value (cost)',
-  'dashboard.expiryAlerts': 'Expiry alerts',
+  'dashboard.expiryAlerts': 'Expiring and expired',
   'dashboard.noExpiring': 'No batches expiring soon.',
   'dashboard.lowStockTitle': 'Low stock',
   'dashboard.noLowStock': 'Everything is above its minimum level.',
@@ -344,7 +342,6 @@ export const en = {
 
   // ---- Sell ----
   'sell.title': 'Sell',
-  'sell.subtitle': 'Search, add to cart, check out',
   'sell.search': 'Search medicine or scan/type barcode…',
   'sell.typeToSearch': 'Type to search all {count} medicines',
   'sell.cart': 'Cart ({count})',
@@ -371,7 +368,6 @@ export const en = {
 
   // ---- Inventory and batches ----
   'inventory.title': 'Inventory',
-  'inventory.subtitle': 'Stock by batch and expiry date',
   'inventory.receive': 'Receive',
   'inventory.tab.batches': 'Batches',
   'inventory.tab.log': 'Movement log',
@@ -703,6 +699,24 @@ export const en = {
   'dbinfo.compact': 'Compact',
   'dbinfo.compactHint': 'Rebuilds the file without its unused pages (VACUUM).',
   'dbinfo.compacted': 'Compacted: {before} → {after}',
+  'dashboard.title': 'Today',
+  'dashboard.average': 'average sale {amount}',
+  'dashboard.newSale': 'New sale',
+  'dashboard.receiveStock': 'Receive stock',
+  'dashboard.findMedicine': 'Find a medicine',
+  'dashboard.attention': 'Needs attention',
+  'dashboard.attention.expired': 'Expired batches on the shelf',
+  'dashboard.attention.expiredHint': 'Write them off so they can’t be sold',
+  'dashboard.attention.near': 'Expiring within {days} days',
+  'dashboard.attention.nearHint': 'Sell these first or return them to the supplier',
+  'dashboard.attention.low': 'Low or out of stock',
+  'dashboard.attention.lowHint': 'Reorder from a supplier',
+  'dashboard.attention.none': 'Nothing needs attention',
+  'dashboard.attention.noneHint': 'No expired, expiring or low-stock items',
+  'sell.cartBar_one': '{count} item',
+  'sell.cartBar_other': '{count} items',
+  'sell.inCart': '{count} in cart',
+  'medicine.lot': 'Lot {batch}',
 } as const;
 
 export type TranslationKey = keyof typeof en;

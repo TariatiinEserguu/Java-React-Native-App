@@ -1,20 +1,21 @@
 import { useState } from 'react';
-import { Animated, KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 
+import { Text } from '../components/Text';
+import { PharmacyCross } from '../components/brand';
 import { Enter, useShake } from '../components/motion';
 import { LanguageSwitch, ThemeToggle } from '../components/PreferenceControls';
-import { Button, Card, ErrorBanner, Field, Icon } from '../components/ui';
+import { Button, Card, ErrorBanner, Field } from '../components/ui';
 import { friendlyError } from '../db/errors';
 import { DEMO_ACCOUNTS } from '../db/seed';
 import { useI18n } from '../i18n';
 import { roleLabel } from '../services/permissions';
 import { useSession } from '../session';
-import { makeStyles, useTheme } from '../theme';
+import { makeStyles } from '../theme';
 
 export function LoginScreen() {
   const { login } = useSession();
   const { t } = useI18n();
-  const { colors } = useTheme();
   const styles = useStyles();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -45,7 +46,7 @@ export function LoginScreen() {
       <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
         <Enter index={0} offset={16} style={styles.center}>
           <View style={styles.logo}>
-            <Icon name="medical" size={28} color={colors.onPrimary} />
+            <PharmacyCross size={30} />
           </View>
           <Text accessibilityRole="header" style={styles.title}>
             PharmaCare
@@ -105,12 +106,12 @@ const useStyles = makeStyles((colors) => ({
   wrap: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20, maxWidth: 480, width: '100%', alignSelf: 'center' },
   center: { alignItems: 'center' },
   full: { width: '100%' },
-  logo: { width: 56, height: 56, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
-  title: { fontSize: 26, fontWeight: '700', letterSpacing: -0.6, color: colors.text },
-  subtitle: { fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 4 },
+  logo: { width: 60, height: 60, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  title: { fontSize: 28, fontWeight: '600', letterSpacing: -0.6, color: colors.text },
+  subtitle: { fontSize: 15, color: colors.muted, textAlign: 'center', marginTop: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  demo: { width: '100%', marginTop: 16, backgroundColor: colors.surfaceAlt },
-  demoTitle: { fontWeight: '600', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, color: colors.muted, marginBottom: 6 },
+  demo: { width: '100%', marginTop: 16, backgroundColor: 'transparent', borderStyle: 'dashed', borderColor: colors.borderStrong },
+  demoTitle: { fontWeight: '600', fontSize: 14, color: colors.text, marginBottom: 6 },
   demoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4, gap: 8 },
   demoText: { color: colors.text, flex: 1 },
   mono: { fontWeight: '700' },

@@ -1,12 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Platform,
   Pressable,
   Switch,
-  Text,
   TextInput,
   View,
   type PressableProps,
@@ -17,8 +16,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { Text } from './Text';
 import { useI18n } from '../i18n';
-import { fontSize, makeStyles, radius, radiusLg, space, transition, useTheme, type Palette } from '../theme';
+import { fonts, fontSize, makeStyles, radius, radiusLg, space, transition, useTheme, type Palette } from '../theme';
 import { nativeDriver, spring, springTo, useAnimatedNumber, useCountUp, useEnterStyle, useIndicator, useReducedMotion } from './motion';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
@@ -328,6 +328,7 @@ const badgeTones = (c: Palette) => ({
   success: { bg: c.successSoft, fg: c.success },
   warning: { bg: c.warningSoft, fg: c.warning },
   danger: { bg: c.dangerSoft, fg: c.danger },
+  rx: { bg: c.rxSoft, fg: c.rx },
 });
 export type BadgeTone = keyof ReturnType<typeof badgeTones>;
 
@@ -503,21 +504,8 @@ export function Stat({
   const styles = useStyles();
   const enter = useEnterStyle({ index: index ?? 0, offset: 12 });
   const valueStyle = [styles.statValue, { color: toneColor(colors, tone) }];
-  return (
-    <PressableScale
-      accessibilityRole={onPress ? 'button' : undefined}
-      disabled={!onPress}
-      onPress={onPress}
-      enter={enter}
-      style={(state: PressState) => [
-        styles.card,
-        styles.stat,
-        onPress && state.hovered && { borderColor: colors.borderStrong },
-        state.pressed && { backgroundColor: colors.surfaceAlt },
-        onPress && webPointer,
-        focusRing(colors, state),
-      ]}
-    >
+  const content = (
+    <>
       <View style={styles.statHead}>
         <Text style={styles.statLabel} numberOfLines={1}>
           {label}
@@ -526,6 +514,24 @@ export function Stat({
       </View>
       {count !== undefined ? <CountUp value={count} format={format} style={valueStyle} /> : <Text style={valueStyle}>{value}</Text>}
       {note ? <Text style={styles.hint}>{note}</Text> : null}
+    </>
+  );
+  if (!onPress) return <Animated.View style={[styles.card, styles.stat, enter]}>{content}</Animated.View>;
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      onPress={onPress}
+      enter={enter}
+      style={(state: PressState) => [
+        styles.card,
+        styles.stat,
+        state.hovered && { borderColor: colors.borderStrong },
+        state.pressed && { backgroundColor: colors.surfaceAlt },
+        webPointer,
+        focusRing(colors, state),
+      ]}
+    >
+      {content}
     </PressableScale>
   );
 }
@@ -552,30 +558,69 @@ export function ToggleField({ label, value, onChange, hint }: { label: string; v
   );
 }
 
-/** Tappable list item card. Pass `index` to fade the rows of a list in one after another. */
+const InGroup = createContext(false);
+
+/**
+ * A grouped list: one panel, rows separated by hairlines, the way stock and catalogue lists read in
+ * pharmacy systems. ListItems inside it render as rows instead of separate cards.
+ */
+export function ListGroup({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const styles = useStyles();
+  return (
+    <View style={[styles.group, style]}>
+      <InGroup.Provider value>{children}</InGroup.Provider>
+    </View>
+  );
+}
+
+/**
+ * Tappable list row (inside a ListGroup) or card (on its own). Pass `index` to fade the rows of a
+ * list in one after another; it also tells rows after the first to draw their divider.
+ */
 export function ListItem({ children, onPress, style, index }: { children: ReactNode; onPress?: () => void; style?: StyleProp<ViewStyle>; index?: number }) {
   const { colors } = useTheme();
   const styles = useStyles();
-  const enter = useEnterStyle({ index, enabled: index !== undefined });
+  const grouped = useContext(InGroup);
+  const enter = useEnterStyle({ index, enabled: index !== undefined, offset: grouped ? 4 : 10 });
+  const base = [grouped ? styles.row : [styles.card, styles.listItem], grouped && (index ?? 0) > 0 && styles.rowDivider];
+  // A row without an action is plain content. (A disabled pressable would mark everything inside it,
+  // buttons included, as unavailable to screen readers.)
+  if (!onPress) return <Animated.View style={[base, style, enter]}>{children}</Animated.View>;
   return (
     <PressableScale
-      accessibilityRole={onPress ? 'button' : undefined}
-      disabled={!onPress}
+      accessibilityRole="button"
       onPress={onPress}
-      pressScale={0.985}
+      pressScale={grouped ? 1 : 0.985}
       enter={enter}
       style={(state: PressState) => [
-        styles.card,
-        styles.listItem,
-        onPress && state.hovered && { borderColor: colors.borderStrong, backgroundColor: colors.surfaceAlt },
+        base,
+        state.hovered && { backgroundColor: colors.surfaceAlt },
+        !grouped && state.hovered && { borderColor: colors.borderStrong },
         state.pressed && { backgroundColor: colors.surfaceAlt },
-        onPress && webPointer,
+        webPointer,
         focusRing(colors, state),
         style,
       ]}
     >
       {children}
     </PressableScale>
+  );
+}
+
+/**
+ * Sellable stock against the reorder level. Only a shortage is coloured: a full bar of plain grey
+ * means "fine", amber means at or below the minimum, an empty red track means out of stock.
+ */
+export function StockMeter({ stock, min, state }: { stock: number; min: number; state: 'OK' | 'LOW' | 'OUT' }) {
+  const { colors } = useTheme();
+  const styles = useStyles();
+  const full = Math.max(min * 3, 1);
+  const ratio = Math.max(0, Math.min(1, stock / full));
+  const color = state === 'OUT' ? colors.danger : state === 'LOW' ? colors.warning : colors.borderStrong;
+  return (
+    <View style={[styles.meter, state === 'OUT' && { backgroundColor: colors.dangerSoft }]} accessibilityElementsHidden importantForAccessibility="no">
+      <View style={{ width: `${Math.max(ratio * 100, state === 'OUT' ? 0 : 6)}%`, height: '100%', borderRadius: 2, backgroundColor: color }} />
+    </View>
   );
 }
 
@@ -602,11 +647,11 @@ export const useStyles = makeStyles((colors) => ({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 42,
+    minHeight: 44,
   },
   buttonSmall: { paddingHorizontal: 12, paddingVertical: 6, minHeight: 36 },
   buttonContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 1 },
-  buttonText: { fontWeight: '600', fontSize: fontSize.body, letterSpacing: -0.1, textAlign: 'center', flexShrink: 1 },
+  buttonText: { fontWeight: '600', fontSize: fontSize.body, textAlign: 'center', flexShrink: 1 },
   buttonTextSmall: { fontSize: fontSize.small },
   iconButton: { width: 36, height: 36, borderRadius: radius, alignItems: 'center', justifyContent: 'center' },
   card: {
@@ -616,11 +661,11 @@ export const useStyles = makeStyles((colors) => ({
     borderColor: colors.border,
     padding: 16,
   },
-  header: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.lg },
-  title: { fontSize: fontSize.title, fontWeight: '700', color: colors.text, letterSpacing: -0.4 },
+  header: { flexDirection: 'row', alignItems: 'flex-end', gap: space.md, marginBottom: space.lg },
+  title: { fontSize: fontSize.title, fontWeight: '600', color: colors.text, letterSpacing: -0.3, lineHeight: 30 },
   subtitle: { fontSize: fontSize.small, color: colors.muted, marginTop: 2 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 28, marginBottom: space.sm },
-  sectionTitle: { fontSize: fontSize.small, fontWeight: '600', color: colors.muted, flexShrink: 1, textTransform: 'uppercase', letterSpacing: 0.6 },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 26, marginBottom: space.sm, minHeight: 28 },
+  sectionTitle: { fontSize: fontSize.body, fontWeight: '600', color: colors.text, flexShrink: 1 },
   field: { marginBottom: space.md },
   label: { fontSize: fontSize.small, fontWeight: '600', color: colors.text, marginBottom: 6 },
   input: {
@@ -630,6 +675,7 @@ export const useStyles = makeStyles((colors) => ({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: fontSize.body,
+    fontFamily: fonts.regular,
     color: colors.text,
     backgroundColor: colors.surface,
     minHeight: 44,
@@ -651,8 +697,8 @@ export const useStyles = makeStyles((colors) => ({
     marginBottom: space.md,
     minHeight: 44,
   },
-  searchInput: { flex: 1, fontSize: fontSize.body, color: colors.text, paddingVertical: 10, minWidth: 0, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null) },
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, alignSelf: 'flex-start', flexShrink: 1 },
+  searchInput: { flex: 1, fontSize: fontSize.body, fontFamily: fonts.regular, color: colors.text, paddingVertical: 10, minWidth: 0, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null) },
+  badge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, alignSelf: 'flex-start', flexShrink: 1 },
   badgeText: { fontSize: fontSize.caption, fontWeight: '600' },
   chip: {
     paddingHorizontal: 12,
@@ -664,9 +710,9 @@ export const useStyles = makeStyles((colors) => ({
     minHeight: 34,
     justifyContent: 'center',
   },
-  chipActive: { backgroundColor: colors.text, borderColor: colors.text },
+  chipActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   chipText: { fontSize: fontSize.small, color: colors.text },
-  chipTextActive: { color: colors.bg, fontWeight: '600' },
+  chipTextActive: { color: colors.primary, fontWeight: '600' },
   empty: { alignItems: 'center', gap: 6, paddingVertical: 32, paddingHorizontal: space.lg },
   emptyIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   emptyText: { textAlign: 'center', color: colors.text, fontSize: fontSize.body, fontWeight: '600' },
@@ -692,9 +738,13 @@ export const useStyles = makeStyles((colors) => ({
   stat: { flexGrow: 1, flexBasis: 160 },
   statHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   statLabel: { fontSize: fontSize.small, color: colors.muted, fontWeight: '500', flexShrink: 1 },
-  statValue: { fontSize: 24, fontWeight: '700', color: colors.text, marginTop: 8, marginBottom: 2, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  statValue: { fontSize: 24, fontWeight: '600', color: colors.text, marginTop: 8, marginBottom: 2, letterSpacing: -0.4 },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   listItem: { paddingVertical: space.md, marginBottom: space.sm },
+  group: { backgroundColor: colors.surface, borderRadius: radiusLg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  row: { paddingHorizontal: space.lg, paddingVertical: 12, backgroundColor: colors.surface },
+  rowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
+  meter: { width: 48, height: 4, borderRadius: 2, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
   kv: { flexDirection: 'row', justifyContent: 'space-between', gap: space.md, paddingVertical: 4 },
   kvLabel: { color: colors.muted, fontSize: 14, flexShrink: 1 },
   kvValue: { color: colors.text, fontSize: 14, flexShrink: 1, textAlign: 'right', fontVariant: ['tabular-nums'] },

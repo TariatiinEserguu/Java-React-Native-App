@@ -40,7 +40,7 @@ export const mn: Record<TranslationKey, string> = {
 
   // ---- Navigation ----
   'nav.main': 'Үндсэн цэс',
-  'nav.dashboard': 'Самбар',
+  'nav.dashboard': 'Өнөөдөр',
   'nav.medicines': 'Эмүүд',
   'nav.sell': 'Борлуулалт',
   'nav.inventory': 'Нөөц',
@@ -277,26 +277,24 @@ export const mn: Record<TranslationKey, string> = {
   'table.showingFirst': '{total} мөрийн эхний {shown}-г харуулж байна',
 
   // ---- Login ----
-  'login.tagline': 'Интернэтгүй ажилладаг эмийн сангийн систем · мэдээлэл энэ төхөөрөмж дээр хадгалагдана',
+  'login.tagline': 'Эмийн сангийн удирдлага',
   'login.username': 'Нэвтрэх нэр',
   'login.password': 'Нууц үг',
   'login.showPassword': 'Нууц үг харуулах',
   'login.hidePassword': 'Нууц үг нуух',
   'login.submit': 'Нэвтрэх',
-  'login.demoTitle': 'Туршилтын бүртгэлүүд (зөвхөн прототип)',
+  'login.demoTitle': 'Туршилтын бүртгэлүүд',
   'login.useAccount': 'Ашиглах',
 
   // ---- Dashboard ----
-  'dashboard.greeting': 'Сайн байна уу, {name}',
-  'dashboard.subtitle': 'орон нутгийн өгөгдлийн сангийн бодит мэдээлэл',
   'dashboard.mySalesToday': 'Миний өнөөдрийн борлуулалт',
   'dashboard.netSalesToday': 'Өнөөдрийн цэвэр борлуулалт',
   'dashboard.sellableUnits': 'Зарах боломжтой нэгж',
   'dashboard.lowStock': 'Нөөц бага / дууссан',
   'dashboard.nearExpiry': 'Дуусах дөхсөн',
-  'dashboard.expired': 'Хугацаа дууссан (акталах)',
+  'dashboard.expired': 'Хугацаа дууссан',
   'dashboard.stockValue': 'Нөөцийн өртөг',
-  'dashboard.expiryAlerts': 'Хугацааны анхааруулга',
+  'dashboard.expiryAlerts': 'Дуусах дөхсөн ба дууссан',
   'dashboard.noExpiring': 'Удахгүй хугацаа дуусах цуврал алга.',
   'dashboard.lowStockTitle': 'Нөөц бага',
   'dashboard.noLowStock': 'Бүх эмийн нөөц доод түвшнөөс дээгүүр байна.',
@@ -345,7 +343,6 @@ export const mn: Record<TranslationKey, string> = {
 
   // ---- Sell ----
   'sell.title': 'Борлуулалт',
-  'sell.subtitle': 'Хайх, сагсанд нэмэх, төлбөр тооцоо хийх',
   'sell.search': 'Эм хайх эсвэл штрих код бичих…',
   'sell.typeToSearch': 'Бүх {count} эмийг хайхын тулд бичнэ үү',
   'sell.cart': 'Сагс ({count})',
@@ -372,7 +369,6 @@ export const mn: Record<TranslationKey, string> = {
 
   // ---- Inventory and batches ----
   'inventory.title': 'Нөөц',
-  'inventory.subtitle': 'Цуврал болон дуусах огноогоор',
   'inventory.receive': 'Хүлээн авах',
   'inventory.tab.batches': 'Цувралууд',
   'inventory.tab.log': 'Хөдөлгөөний түүх',
@@ -704,4 +700,22 @@ export const mn: Record<TranslationKey, string> = {
   'dbinfo.compact': 'Шахах',
   'dbinfo.compactHint': 'Ашиглагдаагүй хуудсуудгүйгээр файлыг дахин бүтээнэ (VACUUM).',
   'dbinfo.compacted': 'Шахлаа: {before} → {after}',
+  'dashboard.title': 'Өнөөдөр',
+  'dashboard.average': 'дундаж {amount}',
+  'dashboard.newSale': 'Шинэ борлуулалт',
+  'dashboard.receiveStock': 'Бараа хүлээн авах',
+  'dashboard.findMedicine': 'Эм хайх',
+  'dashboard.attention': 'Анхаарах зүйлс',
+  'dashboard.attention.expired': 'Тавиур дээрх хугацаа дууссан цувралууд',
+  'dashboard.attention.expiredHint': 'Борлуулагдахгүйн тулд актлана уу',
+  'dashboard.attention.near': '{days} хоногийн дотор хугацаа дуусах',
+  'dashboard.attention.nearHint': 'Эхэлж борлуулах эсвэл нийлүүлэгчид буцаана уу',
+  'dashboard.attention.low': 'Нөөц бага эсвэл дууссан',
+  'dashboard.attention.lowHint': 'Нийлүүлэгчээс дахин захиална уу',
+  'dashboard.attention.none': 'Анхаарах зүйл алга',
+  'dashboard.attention.noneHint': 'Хугацаа дууссан, дуусах дөхсөн, нөөц багатай эм алга',
+  'sell.cartBar_one': '{count} бараа',
+  'sell.cartBar_other': '{count} бараа',
+  'sell.inCart': 'Сагсанд {count}',
+  'medicine.lot': 'Цуврал {batch}',
 };

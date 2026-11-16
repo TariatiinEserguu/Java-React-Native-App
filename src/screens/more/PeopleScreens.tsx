@@ -1,12 +1,13 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
+import { Text } from '../../components/Text';
 import { confirmAction } from '../../components/feedback';
 import { FormModal } from '../../components/FormModal';
 import { useAction, useSubmit } from '../../components/hooks';
 import { SelectField } from '../../components/SelectField';
-import { Badge, Button, EmptyState, ErrorBanner, Field, ListItem, LoadingState, SearchBar } from '../../components/ui';
+import { Badge, Button, EmptyState, ErrorBanner, Field, ListGroup, ListItem, LoadingState, SearchBar } from '../../components/ui';
 import { useDbQuery } from '../../db/DataContext';
 import { listCategories, listCustomers, listSuppliers, listUsers, type Category, type Customer, type Supplier, type User } from '../../db/repository';
 import { dateTime, money, shortDate } from '../../format';
@@ -79,18 +80,22 @@ export function CustomersScreen() {
       {error ? <ErrorBanner message={error} /> : null}
       {!data && !error ? <LoadingState /> : null}
       {data?.length === 0 ? <EmptyState icon="people-outline" text={t('customers.empty')} hint={t('customers.emptyHint')} /> : null}
-      {data?.map((c, i) => (
-        <ListItem index={i} key={c.customer_id} onPress={() => open(c)}>
-          <View style={styles.top}>
-            <Text style={styles.name}>{c.full_name}</Text>
-            <View style={{ flex: 1 }} />
-            <Text style={styles.amount}>{money(c.total_spent)}</Text>
-          </View>
-          <Text style={styles.muted}>
-            {c.phone ?? t('customers.noPhone')} · {tn('count.orders', c.order_count)}{c.last_visit ? ` · ${t('customers.lastVisit', { date: shortDate(c.last_visit) })}` : ''}
-          </Text>
-        </ListItem>
-      ))}
+      {data?.length ? (
+        <ListGroup>
+          {data.map((c, i) => (
+            <ListItem index={i} key={c.customer_id} onPress={() => open(c)}>
+              <View style={styles.top}>
+                <Text style={styles.name}>{c.full_name}</Text>
+                <View style={{ flex: 1 }} />
+                <Text style={styles.amount}>{money(c.total_spent)}</Text>
+              </View>
+              <Text style={styles.muted}>
+                {c.phone ?? t('customers.noPhone')} · {tn('count.orders', c.order_count)}{c.last_visit ? ` · ${t('customers.lastVisit', { date: shortDate(c.last_visit) })}` : ''}
+              </Text>
+            </ListItem>
+          ))}
+        </ListGroup>
+      ) : null}
       <FormModal
         visible={editing !== null}
         title={editing === 'new' ? t('customers.add') : t('customers.edit')}
@@ -149,18 +154,22 @@ export function SuppliersScreen() {
       {error ? <ErrorBanner message={error} /> : null}
       {!data && !error ? <LoadingState /> : null}
       {data?.length === 0 ? <EmptyState icon="bus-outline" text={t('suppliers.empty')} /> : null}
-      {data?.map((s, i) => (
-        <ListItem index={i} key={s.supplier_id} onPress={canEdit ? () => open(s) : undefined}>
-          <View style={styles.top}>
-            <Text style={styles.name}>{s.supplier_name}</Text>
-            <View style={{ flex: 1 }} />
-            {s.is_active ? null : <Badge label={t('common.inactive')} />}
-          </View>
-          <Text style={styles.muted}>
-            {[s.contact_person, s.phone, s.email].filter(Boolean).join(' · ') || t('suppliers.noContact')} · {tn('count.batches', s.batch_count)}
-          </Text>
-        </ListItem>
-      ))}
+      {data?.length ? (
+        <ListGroup>
+          {data.map((s, i) => (
+            <ListItem index={i} key={s.supplier_id} onPress={canEdit ? () => open(s) : undefined}>
+              <View style={styles.top}>
+                <Text style={styles.name}>{s.supplier_name}</Text>
+                <View style={{ flex: 1 }} />
+                {s.is_active ? null : <Badge label={t('common.inactive')} />}
+              </View>
+              <Text style={styles.muted}>
+                {[s.contact_person, s.phone, s.email].filter(Boolean).join(' · ') || t('suppliers.noContact')} · {tn('count.batches', s.batch_count)}
+              </Text>
+            </ListItem>
+          ))}
+        </ListGroup>
+      ) : null}
       <FormModal
         visible={editing !== null}
         title={editing === 'new' ? t('suppliers.add') : t('suppliers.edit')}
@@ -217,16 +226,20 @@ export function CategoriesScreen() {
       {error ? <ErrorBanner message={error} /> : null}
       {!data && !error ? <LoadingState /> : null}
       {data?.length === 0 ? <EmptyState icon="pricetags-outline" text={t('categories.empty')} /> : null}
-      {data?.map((c, i) => (
-        <ListItem index={i} key={c.category_id} onPress={canEdit ? () => open(c) : undefined}>
-          <View style={styles.top}>
-            <Text style={styles.name}>{c.category_name}</Text>
-            <View style={{ flex: 1 }} />
-            {c.is_active ? <Text style={styles.muted}>{tn('count.medicines', c.medicine_count)}</Text> : <Badge label={t('common.inactive')} />}
-          </View>
-          {c.description ? <Text style={styles.muted}>{c.description}</Text> : null}
-        </ListItem>
-      ))}
+      {data?.length ? (
+        <ListGroup>
+          {data.map((c, i) => (
+            <ListItem index={i} key={c.category_id} onPress={canEdit ? () => open(c) : undefined}>
+              <View style={styles.top}>
+                <Text style={styles.name}>{c.category_name}</Text>
+                <View style={{ flex: 1 }} />
+                {c.is_active ? <Text style={styles.muted}>{tn('count.medicines', c.medicine_count)}</Text> : <Badge label={t('common.inactive')} />}
+              </View>
+              {c.description ? <Text style={styles.muted}>{c.description}</Text> : null}
+            </ListItem>
+          ))}
+        </ListGroup>
+      ) : null}
       <FormModal visible={editing !== null} title={editing === 'new' ? t('categories.add') : t('categories.edit')} onClose={() => setEditing(null)} onSubmit={save} submitting={saving} error={saveError}>
         <Field label={t('field.name')} value={form.category_name} onChangeText={(v) => setForm((f) => ({ ...f, category_name: v }))} error={errors.category_name} />
         <Field label={t('field.description')} value={form.description} onChangeText={(v) => setForm((f) => ({ ...f, description: v }))} error={errors.description} />
@@ -277,18 +290,22 @@ export function StaffScreen() {
       <Header count={data ? tn('count.accounts', data.length) : undefined} onAdd={() => open('new')} />
       {error ? <ErrorBanner message={error} /> : null}
       {!data && !error ? <LoadingState /> : null}
-      {data?.map((u, i) => (
-        <ListItem index={i} key={u.user_id} onPress={() => open(u)}>
-          <View style={styles.top}>
-            <Text style={styles.name}>{u.full_name}</Text>
-            <View style={{ flex: 1 }} />
-            <Badge label={u.is_active ? roleLabel(u.role) : t('common.inactive')} tone={u.is_active ? 'primary' : 'neutral'} />
-          </View>
-          <Text style={styles.muted}>
-            @{u.username} · {t('staff.lastLogin', { when: u.last_login_at ? dateTime(u.last_login_at) : t('staff.never') })}
-          </Text>
-        </ListItem>
-      ))}
+      {data?.length ? (
+        <ListGroup>
+          {data.map((u, i) => (
+            <ListItem index={i} key={u.user_id} onPress={() => open(u)}>
+              <View style={styles.top}>
+                <Text style={styles.name}>{u.full_name}</Text>
+                <View style={{ flex: 1 }} />
+                <Badge label={u.is_active ? roleLabel(u.role) : t('common.inactive')} tone={u.is_active ? 'primary' : 'neutral'} />
+              </View>
+              <Text style={styles.muted}>
+                @{u.username} · {t('staff.lastLogin', { when: u.last_login_at ? dateTime(u.last_login_at) : t('staff.never') })}
+              </Text>
+            </ListItem>
+          ))}
+        </ListGroup>
+      ) : null}
       <FormModal visible={editing !== null} title={editing === 'new' ? t('staff.add') : t('staff.edit')} onClose={() => setEditing(null)} onSubmit={save} submitting={saving} error={saveError}>
         <Field label={t('field.fullName')} value={form.full_name} onChangeText={set('full_name')} error={errors.full_name} />
         <Field label={t('login.username')} value={form.username} onChangeText={set('username')} error={errors.username} autoCapitalize="none" editable={editing === 'new'} />

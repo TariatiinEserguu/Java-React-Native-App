@@ -1,7 +1,9 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
+import { Text } from '../components/Text';
+import { FormGlyph } from '../components/brand';
 import { confirmAction } from '../components/feedback';
 import { FormModal } from '../components/FormModal';
 import { useAction, useSubmit } from '../components/hooks';
@@ -17,25 +19,25 @@ import {
   Field,
   LoadingState,
   KeyValue,
+  ListGroup,
   ListItem,
   ScreenHeader,
   SearchBar,
   SectionTitle,
+  StockMeter,
   ToggleField,
   screen,
-  type BadgeTone,
 } from '../components/ui';
 import { useDbQuery } from '../db/DataContext';
-import { listBatches, listCategories, listMedicines, type Medicine, type MedicineFilter, type StockState } from '../db/repository';
+import { listBatches, listCategories, listMedicines, type Medicine, type MedicineFilter } from '../db/repository';
 import { daysLabel, formatNumber, medicineLabel, money, shortDate } from '../format';
 import { useI18n, type TranslationKey } from '../i18n';
 import { createMedicine, DOSAGE_FORMS, setMedicineActive, updateMedicine, type DosageForm, type MedicineInput } from '../services/catalog';
 import { can } from '../services/permissions';
 import { getSettings } from '../services/settings';
 import { useUser } from '../session';
-import { makeStyles } from '../theme';
-
-export const stockTone: Record<StockState, BadgeTone> = { OK: 'success', LOW: 'warning', OUT: 'danger' };
+import { makeStyles, useTheme } from '../theme';
+import { useIntent, type Intent } from './navigation';
 
 const FILTERS: [MedicineFilter, TranslationKey][] = [
   ['all', 'medicines.filter.all'],
@@ -60,8 +62,9 @@ const emptyForm = (minStock: number): Form => ({
   requires_prescription: false,
 });
 
-export function MedicinesScreen() {
+export function MedicinesScreen({ intent }: { intent?: Intent | null }) {
   const { t, tn } = useI18n();
+  const { colors } = useTheme();
   const styles = useStyles();
   const db = useSQLiteContext();
   const user = useUser();
@@ -69,6 +72,14 @@ export function MedicinesScreen() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<MedicineFilter>('all');
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  // From Today's "Low or out of stock": open the catalogue on that filter.
+  useIntent(intent, (value) => {
+    if (value === 'low') {
+      setFilter('low');
+      setCategoryId(null);
+      setSearch('');
+    }
+  });
   const { data: medicines, error } = useDbQuery((db) => listMedicines(db, { search, filter, categoryId }), [search, filter, categoryId]);
   const { data: categories } = useDbQuery((db) => listCategories(db));
 
@@ -138,27 +149,41 @@ export function MedicinesScreen() {
       {!medicines && !error ? <LoadingState /> : null}
       {medicines?.length === 0 ? <EmptyState icon="search-outline" text={t('medicines.empty')} hint={t('medicines.emptyHint')} /> : null}
 
-      {medicines?.map((m, i) => (
-        <ListItem index={i} key={m.medicine_id} onPress={() => setDetail(m)}>
-          <View style={styles.top}>
-            <Text style={styles.name}>{medicineLabel(m)}</Text>
-            {m.requires_prescription ? <Badge label={t('medicine.rx')} tone="info" /> : null}
-            <View style={{ flex: 1 }} />
-            <Text style={styles.price}>{money(m.selling_price)}</Text>
-          </View>
-          <View style={styles.bottom}>
-            <Text style={styles.muted}>
-              {m.generic_name} · {m.unit} · {m.category_name}
-            </Text>
-            <View style={{ flex: 1 }} />
-            {m.is_active ? (
-              <Badge label={m.stock_state === 'OUT' ? t('stock.OUT') : t('stock.inStock', { count: m.sellable_stock })} tone={stockTone[m.stock_state]} />
-            ) : (
-              <Badge label={t('common.inactive')} />
-            )}
-          </View>
-        </ListItem>
-      ))}
+      {medicines?.length ? (
+        <ListGroup>
+          {medicines.map((m, i) => (
+            <ListItem index={i} key={m.medicine_id} onPress={() => setDetail(m)}>
+              <View style={styles.row}>
+                <FormGlyph form={m.dosage_form} rx={!!m.requires_prescription} />
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <View style={styles.top}>
+                    <Text style={styles.name} numberOfLines={1}>
+                      {medicineLabel(m)}
+                    </Text>
+                    {m.requires_prescription ? <Badge label={t('medicine.rx')} tone="rx" /> : null}
+                  </View>
+                  <Text style={styles.muted} numberOfLines={1}>
+                    {m.generic_name}, {t(`dosage.${m.dosage_form as DosageForm}`).toLowerCase()}, {m.unit}
+                  </Text>
+                </View>
+                <View style={styles.right}>
+                  <Text style={styles.price}>{money(m.selling_price)}</Text>
+                  {m.is_active ? (
+                    <View style={styles.stock}>
+                      <Text style={[styles.stockText, m.stock_state !== 'OK' && { color: m.stock_state === 'OUT' ? colors.danger : colors.warning, fontWeight: '600' }]}>
+                        {m.stock_state === 'OUT' ? t('stock.OUT') : t('stock.inStock', { count: m.sellable_stock })}
+                      </Text>
+                      <StockMeter stock={m.sellable_stock} min={m.min_stock_level} state={m.stock_state} />
+                    </View>
+                  ) : (
+                    <Badge label={t('common.inactive')} />
+                  )}
+                </View>
+              </View>
+            </ListItem>
+          ))}
+        </ListGroup>
+      ) : null}
 
       <MedicineDetail
         medicine={detail}
@@ -286,8 +311,12 @@ const useStyles = makeStyles((colors) => ({
   chips: { gap: 8, paddingBottom: 10 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   bottom: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  name: { fontSize: 16, fontWeight: '600', color: colors.text, flexShrink: 1 },
+  name: { fontSize: 15, fontWeight: '600', color: colors.text, flexShrink: 1 },
   price: { fontSize: 15, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
   muted: { fontSize: 13, color: colors.muted, flexShrink: 1 },
   pair: { flexDirection: 'row', gap: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  right: { alignItems: 'flex-end', gap: 4 },
+  stock: { alignItems: 'flex-end', gap: 4 },
+  stockText: { fontSize: 12, color: colors.muted },
 }));

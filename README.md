@@ -51,9 +51,9 @@ npm run lint         # ESLint (expo lint)
 
 | Tab | What it does |
 | --- | --- |
-| **Dashboard** | Today's sales, sellable units, low-stock, near-expiry and expired alerts, stock value, recent sales — all from SQL |
+| **Today** | The day's net sales, quick actions (new sale, receive stock, find a medicine), a *Needs attention* queue (expired, expiring, low stock) that opens the matching filtered list, and recent sales |
 | **Medicines** | Search by brand / generic name / barcode, filter by category or stock state, add / edit / deactivate, see batches |
-| **Sell** | Cart, FEFO batch allocation, prescription check for Rx-only items, discounts, payment method, receipt |
+| **Sell** | Point of sale: a checkout bar pinned to the bottom on phones, products and cart side by side on wide screens; FEFO batch allocation, prescription check for Rx-only items, discounts, payment method, receipt |
 | **Inventory** | Batches by expiry state, receive stock, adjust, write off, quarantine, full movement log |
 | **More** | Orders & refunds, customers, suppliers, categories, 11 reports, staff accounts, settings, backup/restore, integrity check, database console (overview, SQL editor with query plans, table browser) |
 
@@ -67,9 +67,11 @@ npm run lint         # ESLint (expo lint)
 
 All interface text lives in `src/i18n/locales/en.ts` (defines the keys) and `src/i18n/locales/mn.ts` (must contain every key; the type check fails otherwise). Use `const { t, tn } = useI18n()` in components, or `t()` from `src/i18n/core.ts` in services. Plurals are `<key>_one` / `<key>_other`, read with `tn(key, count)`. Dates, numbers and money go through `src/format.ts`.
 
-### Colours
+### Colours and type
 
-Colours are tokens in `src/theme.tsx` (`light` and `dark` palettes). Components never hardcode hex values: define styles with `makeStyles((colors) => ({ ... }))` and call the returned hook in the component.
+Colours are tokens in `src/theme.tsx` (`light` and `dark` palettes): pharmacy-cross green for the brand and main actions, violet for prescription-only medicines, and amber/red only on items that need action. Components never hardcode hex values: define styles with `makeStyles((colors) => ({ ... }))` and call the returned hook in the component.
+
+The typeface is IBM Plex Sans (`@expo-google-fonts/ibm-plex-sans`, four weights loaded in `App.tsx`). Import `Text` from `src/components/Text`, not from `react-native`: it turns the `fontWeight` in a style into the matching font file. Lists use `ListGroup` + `ListItem`, and each medicine shows a drawn dosage-form mark (`FormGlyph` in `src/components/brand.tsx`).
 
 ### Motion
 

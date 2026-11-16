@@ -37,7 +37,9 @@ describe('language switching', () => {
     assert.equal(t('login.submit'), 'Нэвтрэх');
     setLanguage('en');
     assert.equal(t('login.submit'), 'Log in');
-    assert.equal(t('dashboard.greeting', { name: 'Oyuna' }), 'Hello, Oyuna');
+    assert.equal(t('medicine.lot', { batch: 'AMX2503' }), 'Lot AMX2503');
+    setLanguage('mn');
+    assert.equal(t('medicine.lot', { batch: 'AMX2503' }), 'Цуврал AMX2503');
   });
 
   test('plurals: English inflects, Mongolian does not', () => {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, Pressable, View } from 'react-native';
 
+import { Text } from './Text';
 import { useI18n } from '../i18n';
 import { makeStyles, radius, useTheme } from '../theme';
 import { ModalFrame } from './ModalFrame';
