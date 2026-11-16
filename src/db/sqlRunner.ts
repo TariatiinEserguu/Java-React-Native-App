@@ -207,11 +207,107 @@ export async function describeTable(db: SQLiteDatabase, table: string) {
   const quoted = quoteIdent(table);
   const columns = await db.getAllAsync<ColumnInfo>(`PRAGMA table_info(${quoted})`);
   const foreignKeys = await db.getAllAsync<ForeignKeyInfo>(`PRAGMA foreign_key_list(${quoted})`);
-  const indexes = await db.getAllAsync<{ name: string; unique: number }>(`PRAGMA index_list(${quoted})`);
+  // origin: 'c' = CREATE INDEX, 'u' = UNIQUE constraint, 'pk' = primary key.
+  const indexes = await db.getAllAsync<{ name: string; unique: number; origin: string; partial: number }>(`PRAGMA index_list(${quoted})`);
   return { columns, foreignKeys, indexes };
 }
 
 export async function readTablePage(db: SQLiteDatabase, table: string, limit: number, offset: number) {
   const outcome = await runStatement(db, `SELECT * FROM ${quoteIdent(table)} LIMIT ${limit} OFFSET ${offset}`);
   return { columns: outcome.columns, rows: outcome.rows };
+}
+
+export async function listTriggers(db: SQLiteDatabase, table: string) {
+  return db.getAllAsync<{ name: string; sql: string | null }>("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? ORDER BY name", table);
+}
+
+// ---- Query plans ----
+
+export type PlanStep = { id: number; parent: number; detail: string; depth: number };
+
+/**
+ * EXPLAIN QUERY PLAN for the first statement of a script: how SQLite will run it (which index it
+ * uses, where it scans a whole table). Nothing is executed, so it's safe for writes too.
+ */
+export async function explainQueryPlan(db: SQLiteDatabase, script: string): Promise<PlanStep[]> {
+  const first = splitStatements(script)[0];
+  if (!first) return [];
+  const rows = await db.getAllAsync<{ id: number; parent: number; detail: string }>(`EXPLAIN QUERY PLAN ${stripLeadingComments(first)}`);
+  const depth = new Map<number, number>([[0, -1]]);
+  return rows.map((r) => {
+    const d = (depth.get(r.parent) ?? -1) + 1;
+    depth.set(r.id, d);
+    return { id: r.id, parent: r.parent, detail: r.detail, depth: d };
+  });
+}
+
+// ---- Database overview and maintenance ----
+
+export type DatabaseInfo = {
+  sqliteVersion: string;
+  schemaVersion: number;
+  journalMode: string;
+  pageSize: number;
+  pageCount: number;
+  freePages: number;
+  foreignKeys: boolean;
+  objects: { table: number; view: number; index: number; trigger: number };
+};
+
+const pragma = async <T>(db: SQLiteDatabase, name: string) => {
+  const row = await db.getFirstAsync<Record<string, T>>(`PRAGMA ${name}`);
+  return row ? (Object.values(row)[0] as T) : (undefined as T);
+};
+
+export async function databaseInfo(db: SQLiteDatabase): Promise<DatabaseInfo> {
+  const version = await db.getFirstAsync<{ v: string }>('SELECT sqlite_version() AS v');
+  const counts = await db.getAllAsync<{ type: keyof DatabaseInfo['objects']; n: number }>(
+    "SELECT type, COUNT(*) AS n FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' GROUP BY type"
+  );
+  const objects = { table: 0, view: 0, index: 0, trigger: 0 };
+  for (const c of counts) if (c.type in objects) objects[c.type] = c.n;
+  return {
+    sqliteVersion: version?.v ?? '?',
+    schemaVersion: await pragma<number>(db, 'user_version'),
+    journalMode: String(await pragma<string>(db, 'journal_mode')).toUpperCase(),
+    pageSize: await pragma<number>(db, 'page_size'),
+    pageCount: await pragma<number>(db, 'page_count'),
+    freePages: await pragma<number>(db, 'freelist_count'),
+    foreignKeys: (await pragma<number>(db, 'foreign_keys')) === 1,
+    objects,
+  };
+}
+
+export type HealthReport = {
+  /** 'ok', or the problems PRAGMA quick_check found in the file itself. */
+  structure: string[];
+  /** Rows whose foreign key points at nothing. */
+  foreignKeyViolations: number;
+  /** Business-rule inconsistencies from v_integrity_issues. */
+  issues: { issue: string; ref: string }[];
+};
+
+export async function checkDatabase(db: SQLiteDatabase): Promise<HealthReport> {
+  const structure = (await db.getAllAsync<{ quick_check: string }>('PRAGMA quick_check')).map((r) => r.quick_check);
+  const violations = await db.getAllAsync('PRAGMA foreign_key_check');
+  let issues: HealthReport['issues'] = [];
+  try {
+    issues = await db.getAllAsync<{ issue: string; ref: string }>('SELECT * FROM v_integrity_issues');
+  } catch {
+    issues = [{ issue: 'v_integrity_issues is missing', ref: 'view' }];
+  }
+  return { structure, foreignKeyViolations: violations.length, issues };
+}
+
+/** Refreshes the statistics the query planner uses to choose indexes. */
+export async function optimizeDatabase(db: SQLiteDatabase) {
+  await db.execAsync('ANALYZE; PRAGMA optimize;');
+}
+
+/** Rebuilds the file without its free pages. Returns the size in bytes before and after. */
+export async function compactDatabase(db: SQLiteDatabase) {
+  const size = async () => (await pragma<number>(db, 'page_count')) * (await pragma<number>(db, 'page_size'));
+  const before = await size();
+  await db.execAsync('VACUUM;');
+  return { before, after: await size() };
 }

@@ -2,6 +2,7 @@ import { useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { friendlyError } from './errors';
+import { serialized } from './transaction';
 
 type DataContextValue = { version: number; notifyChange: () => void };
 
@@ -9,7 +10,7 @@ const DataContext = createContext<DataContextValue>({ version: 0, notifyChange: 
 
 /**
  * Holds a counter that is bumped after every write (from forms or the SQL editor).
- * Every screen re-queries when it changes, so all views reflect what is actually stored.
+ * Every visible screen re-queries when it changes, so all views reflect what is actually stored.
  */
 export function DataProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState(0);
@@ -22,27 +23,46 @@ export function useDataChange() {
   return useContext(DataContext);
 }
 
-/** Loads data from SQLite and reloads it whenever `deps` change or any write is reported. */
+const ActivityContext = createContext(true);
+
+/**
+ * Marks a subtree as on screen or not. Tabs stay mounted while hidden; their queries skip the
+ * refreshes that writes trigger and catch up once, when the tab is shown again.
+ */
+export function ScreenActivity({ active, children }: { active: boolean; children: ReactNode }) {
+  const parent = useContext(ActivityContext);
+  return <ActivityContext.Provider value={parent && active}>{children}</ActivityContext.Provider>;
+}
+
+/**
+ * Loads data from SQLite and reloads it whenever `deps` change or a write is reported.
+ * While reloading, the previous result stays on screen.
+ */
 export function useDbQuery<T>(load: (db: SQLiteDatabase) => Promise<T>, deps: unknown[] = []) {
   const db = useSQLiteContext();
   const { version } = useDataChange();
-  const [data, setData] = useState<T>();
-  const [error, setError] = useState<string | null>(null);
+  const active = useContext(ActivityContext);
+  // The data version this query has caught up with. It only advances while the screen is visible.
+  const [seen, setSeen] = useState(version);
+  if (active && seen !== version) setSeen(version);
+
+  const [state, setState] = useState<{ data?: T; error: string | null }>({ error: null });
 
   useEffect(() => {
-    let active = true;
-    load(db)
-      .then((result) => {
-        if (!active) return;
-        setData(result);
-        setError(null);
+    let current = true;
+    // Queued behind any write in progress, so a half-finished transaction is never read.
+    serialized(() => load(db))
+      .then((data) => {
+        if (current) setState({ data, error: null });
       })
-      .catch((e) => active && setError(friendlyError(e)));
+      .catch((e) => {
+        if (current) setState((s) => ({ data: s.data, error: friendlyError(e) }));
+      });
     return () => {
-      active = false;
+      current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, version, ...deps]);
+  }, [db, seen, ...deps]);
 
-  return { data, error };
+  return state;
 }

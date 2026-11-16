@@ -1,11 +1,14 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 
 import { DataTable } from '../../components/DataTable';
+import { Enter } from '../../components/motion';
 import { Badge, Button, Card, Chip, EmptyState, focusRing, Icon, SectionTitle, type PressState } from '../../components/ui';
 import { useDataChange, useDbQuery } from '../../db/DataContext';
-import { addHistory, clearHistory, listHistory, runScript, type RunOutcome, type StatementResult } from '../../db/sqlRunner';
+import { friendlyError } from '../../db/errors';
+import { addHistory, clearHistory, explainQueryPlan, listHistory, runScript, type PlanStep, type RunOutcome, type StatementResult } from '../../db/sqlRunner';
+import { serialized } from '../../db/transaction';
 import { dateTime } from '../../format';
 import { useI18n } from '../../i18n';
 import { makeStyles, monoFont, radius, useTheme } from '../../theme';
@@ -19,13 +22,16 @@ export function SqlEditor({ sql, onChangeSql }: { sql: string; onChangeSql: (sql
   const { notifyChange } = useDataChange();
   const { data: history } = useDbQuery(listHistory);
   const [outcome, setOutcome] = useState<RunOutcome | null>(null);
+  const [plan, setPlan] = useState<{ steps: PlanStep[] } | { error: string } | null>(null);
   const [running, setRunning] = useState(false);
 
   const run = async () => {
-    if (!sql.trim()) return;
+    if (!sql.trim() || running) return;
     setRunning(true);
+    setPlan(null);
     try {
-      const result = await runScript(db, sql);
+      // Queued like any write, so a script never runs inside another screen's transaction.
+      const result = await serialized(() => runScript(db, sql));
       setOutcome(result);
       if (result.results.length || result.error) {
         await addHistory(db, sql, result.error ? 'error' : 'success').catch(() => {});
@@ -34,6 +40,15 @@ export function SqlEditor({ sql, onChangeSql }: { sql: string; onChangeSql: (sql
       setRunning(false);
       // Always refresh: the script may have written data, and history changed.
       notifyChange();
+    }
+  };
+
+  const explain = async () => {
+    if (!sql.trim()) return;
+    try {
+      setPlan({ steps: await serialized(() => explainQueryPlan(db, sql)) });
+    } catch (e) {
+      setPlan({ error: friendlyError(e) });
     }
   };
 
@@ -54,14 +69,54 @@ export function SqlEditor({ sql, onChangeSql }: { sql: string; onChangeSql: (sql
           spellCheck={false}
           textAlignVertical="top"
           style={styles.editor}
+          // Web: Ctrl+Enter / Cmd+Enter runs the script without leaving the keyboard.
+          onKeyPress={(e) => {
+            const key = e.nativeEvent as unknown as { key: string; ctrlKey?: boolean; metaKey?: boolean; preventDefault?: () => void };
+            if (Platform.OS === 'web' && key.key === 'Enter' && (key.ctrlKey || key.metaKey)) {
+              (e as unknown as { preventDefault?: () => void }).preventDefault?.();
+              run();
+            }
+          }}
         />
         <View style={styles.toolbar}>
-          <Text style={styles.toolbarHint}>{t('sql.hint')}</Text>
+          <Text style={styles.toolbarHint}>{Platform.OS === 'web' ? t('sql.hintWeb') : t('sql.hint')}</Text>
           <View style={{ flex: 1 }} />
-          <Button title={t('common.clear')} variant="secondary" small onPress={() => { onChangeSql(''); setOutcome(null); }} />
+          <Button
+            title={t('common.clear')}
+            variant="secondary"
+            small
+            onPress={() => {
+              onChangeSql('');
+              setOutcome(null);
+              setPlan(null);
+            }}
+          />
+          <Button title={t('sql.explain')} icon="git-network-outline" variant="secondary" small onPress={explain} disabled={!sql.trim()} />
           <Button title={t('sql.run')} icon="play" small onPress={run} loading={running} disabled={!sql.trim()} />
         </View>
       </Card>
+
+      {plan ? (
+        <Enter key={JSON.stringify(plan)}>
+          <SectionTitle>{t('sql.plan')}</SectionTitle>
+          {'error' in plan ? (
+            <View style={[styles.status, styles.statusError]}>
+              <Text style={[styles.statusText, { color: colors.danger }]}>{plan.error}</Text>
+            </View>
+          ) : (
+            <Card style={styles.plan}>
+              {plan.steps.length === 0 ? <Text style={styles.planLine}>{t('sql.planEmpty')}</Text> : null}
+              {plan.steps.map((step) => (
+                <Text key={step.id} style={[styles.planLine, { paddingLeft: step.depth * 16 }, /^SCAN\b/.test(step.detail) && { color: colors.codeWarning }]}>
+                  {step.depth > 0 ? '└ ' : ''}
+                  {step.detail}
+                </Text>
+              ))}
+              <Text style={styles.planHint}>{t('sql.planHint')}</Text>
+            </Card>
+          )}
+        </Enter>
+      ) : null}
 
       <SectionTitle>{t('sql.examples')}</SectionTitle>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -170,7 +225,10 @@ const useStyles = makeStyles((colors) => ({
     color: colors.codeText,
     backgroundColor: colors.codeBg,
   },
-  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: colors.surface },
+  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: colors.surface, flexWrap: 'wrap' },
+  plan: { backgroundColor: colors.codeBg, borderColor: colors.codeBg, gap: 4 },
+  planLine: { fontFamily: monoFont, fontSize: 12, color: colors.codeText },
+  planHint: { fontSize: 12, color: colors.codePlaceholder, marginTop: 8 },
   toolbarHint: { fontSize: 12, color: colors.muted, flexShrink: 1 },
   status: { borderRadius: radius, padding: 12, marginBottom: 12, gap: 4 },
   statusOk: { backgroundColor: colors.successSoft },

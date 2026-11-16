@@ -37,6 +37,8 @@ export type Palette = {
   codeBg: string;
   codeText: string;
   codePlaceholder: string;
+  /** Highlight on the code background (full table scans in a query plan). */
+  codeWarning: string;
 };
 
 const light: Palette = {
@@ -70,6 +72,7 @@ const light: Palette = {
   codeBg: '#0E0F13',
   codeText: '#E4E4E7',
   codePlaceholder: '#7D7F89',
+  codeWarning: '#FBBF24',
 };
 
 const dark: Palette = {
@@ -103,6 +106,7 @@ const dark: Palette = {
   codeBg: '#060608',
   codeText: '#E4E4E7',
   codePlaceholder: '#71717A',
+  codeWarning: '#FBBF24',
 };
 
 export const palettes: Record<ThemeMode, Palette> = { light, dark };
@@ -116,9 +120,13 @@ export const radiusLg = 12;
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 export const fontSize = { caption: 12, small: 13, body: 14, lead: 16, title: 22, display: 28 } as const;
 
-/** Web-only CSS transition so hover/focus changes ease instead of snapping. Ignored on native. */
+/**
+ * Web-only CSS transition so hover/focus colour changes ease instead of snapping. Ignored on native.
+ * Opacity and transform are left out: those are driven frame by frame by the motion system
+ * (src/components/motion.tsx), and a CSS transition on top would make them lag.
+ */
 export const transition: object =
-  Platform.OS === 'web' ? { transitionProperty: 'background-color, border-color, color, opacity, transform, box-shadow', transitionDuration: '120ms', transitionTimingFunction: 'ease-out' } : {};
+  Platform.OS === 'web' ? { transitionProperty: 'background-color, border-color, color, box-shadow', transitionDuration: '140ms', transitionTimingFunction: 'ease-out' } : {};
 
 const STORAGE_KEY = 'pharmacare.theme';
 

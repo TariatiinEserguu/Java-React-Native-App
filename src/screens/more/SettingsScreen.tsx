@@ -7,9 +7,10 @@ import { useAction } from '../../components/hooks';
 import { LanguageSwitch, ThemeSwitch } from '../../components/PreferenceControls';
 import { Button, Card, ErrorBanner, Field, Icon, KeyValue, SectionTitle } from '../../components/ui';
 import { useDataChange, useDbQuery } from '../../db/DataContext';
-import { friendlyError } from '../../db/errors';
+import { friendlyError, integrityIssueText } from '../../db/errors';
 import { databaseCounts, integrityIssues } from '../../db/repository';
-import { BUSINESS_TABLES, DATABASE_NAME, DEFAULT_SETTINGS, SCHEMA_VERSION } from '../../db/schema';
+import { SCHEMA_VERSION } from '../../db/migrations';
+import { BUSINESS_TABLES, DATABASE_NAME, DEFAULT_SETTINGS } from '../../db/schema';
 import { dateTime } from '../../format';
 import { useI18n, type TranslationKey } from '../../i18n';
 import { backupInfo, backupSupported, createBackup, restoreBackup } from '../../services/backup';
@@ -25,16 +26,6 @@ const SETTING_LABELS: Record<keyof typeof DEFAULT_SETTINGS, [label: TranslationK
   default_min_stock: ['settings.defaultMinStock', true],
   auto_lock_minutes: ['settings.autoLock', true],
   receipt_footer: ['settings.receiptFooter', false],
-};
-
-// The integrity view (v_integrity_issues) stores English text; map each known message for display.
-const INTEGRITY_ISSUES: Record<string, TranslationKey> = {
-  'Batch balance differs from movement ledger': 'integrity.batchBalance',
-  'Completed order without items': 'integrity.orderNoItems',
-  'Order subtotal differs from its lines': 'integrity.subtotal',
-  'Sold quantity differs from batch allocations': 'integrity.soldQty',
-  'Returned quantity differs from RETURN movements': 'integrity.returnedQty',
-  'Prescription medicine sold without prescription': 'integrity.rx',
 };
 
 export function SettingsScreen() {
@@ -239,7 +230,7 @@ function About() {
               <View key={n} style={styles.statusRow}>
                 <Icon name="warning-outline" size={18} color={colors.danger} />
                 <Text style={[styles.statusText, { color: colors.danger }]}>
-                  {INTEGRITY_ISSUES[i.issue] ? t(INTEGRITY_ISSUES[i.issue]) : i.issue} ({i.ref})
+                  {integrityIssueText(i.issue)} ({i.ref})
                 </Text>
               </View>
             ))

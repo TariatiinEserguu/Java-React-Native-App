@@ -4,10 +4,10 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 /**
  * Minimal stand-in for expo-sqlite's async API on top of Node's built-in SQLite, so the real
  * schema, triggers, services and reports can be tested on a computer. Only the methods the app
- * uses are implemented.
+ * uses are implemented. Pass a file path to test file-only features such as WAL.
  */
-export function openTestDb(): SQLiteDatabase {
-  const db = new DatabaseSync(':memory:');
+export function openTestDb(path = ':memory:'): SQLiteDatabase {
+  const db = new DatabaseSync(path);
   const params = (args: unknown[]) => args as SQLInputValue[];
   const adapter = {
     async execAsync(sql: string) {

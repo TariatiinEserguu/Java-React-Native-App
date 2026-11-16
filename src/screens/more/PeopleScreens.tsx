@@ -79,8 +79,8 @@ export function CustomersScreen() {
       {error ? <ErrorBanner message={error} /> : null}
       {!data && !error ? <LoadingState /> : null}
       {data?.length === 0 ? <EmptyState icon="people-outline" text={t('customers.empty')} hint={t('customers.emptyHint')} /> : null}
-      {data?.map((c) => (
-        <ListItem key={c.customer_id} onPress={() => open(c)}>
+      {data?.map((c, i) => (
+        <ListItem index={i} key={c.customer_id} onPress={() => open(c)}>
           <View style={styles.top}>
             <Text style={styles.name}>{c.full_name}</Text>
             <View style={{ flex: 1 }} />
@@ -149,8 +149,8 @@ export function SuppliersScreen() {
       {error ? <ErrorBanner message={error} /> : null}
       {!data && !error ? <LoadingState /> : null}
       {data?.length === 0 ? <EmptyState icon="bus-outline" text={t('suppliers.empty')} /> : null}
-      {data?.map((s) => (
-        <ListItem key={s.supplier_id} onPress={canEdit ? () => open(s) : undefined}>
+      {data?.map((s, i) => (
+        <ListItem index={i} key={s.supplier_id} onPress={canEdit ? () => open(s) : undefined}>
           <View style={styles.top}>
             <Text style={styles.name}>{s.supplier_name}</Text>
             <View style={{ flex: 1 }} />
@@ -217,8 +217,8 @@ export function CategoriesScreen() {
       {error ? <ErrorBanner message={error} /> : null}
       {!data && !error ? <LoadingState /> : null}
       {data?.length === 0 ? <EmptyState icon="pricetags-outline" text={t('categories.empty')} /> : null}
-      {data?.map((c) => (
-        <ListItem key={c.category_id} onPress={canEdit ? () => open(c) : undefined}>
+      {data?.map((c, i) => (
+        <ListItem index={i} key={c.category_id} onPress={canEdit ? () => open(c) : undefined}>
           <View style={styles.top}>
             <Text style={styles.name}>{c.category_name}</Text>
             <View style={{ flex: 1 }} />
@@ -277,8 +277,8 @@ export function StaffScreen() {
       <Header count={data ? tn('count.accounts', data.length) : undefined} onAdd={() => open('new')} />
       {error ? <ErrorBanner message={error} /> : null}
       {!data && !error ? <LoadingState /> : null}
-      {data?.map((u) => (
-        <ListItem key={u.user_id} onPress={() => open(u)}>
+      {data?.map((u, i) => (
+        <ListItem index={i} key={u.user_id} onPress={() => open(u)}>
           <View style={styles.top}>
             <Text style={styles.name}>{u.full_name}</Text>
             <View style={{ flex: 1 }} />

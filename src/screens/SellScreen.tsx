@@ -1,13 +1,14 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Animated, ScrollView, Text, View } from 'react-native';
 
 import { useToast } from '../components/feedback';
 import { FormModal } from '../components/FormModal';
+import { animateNextLayout, Enter, usePop } from '../components/motion';
 import { useSubmit } from '../components/hooks';
 import { SelectField } from '../components/SelectField';
 import { Sheet } from '../components/Sheet';
-import { Badge, Button, Card, Chip, EmptyState, Field, focusRing, KeyValue, LoadingState, ScreenHeader, SearchBar, SectionTitle, screen, type PressState } from '../components/ui';
+import { Badge, Button, Card, Chip, EmptyState, Field, focusRing, KeyValue, LoadingState, PressableScale, ScreenHeader, SearchBar, SectionTitle, screen, type PressState } from '../components/ui';
 import { useDbQuery } from '../db/DataContext';
 import { getOrderDetail, listCustomers, listMedicines, type Medicine } from '../db/repository';
 import { dateTime, medicineLabel, money, todayIso } from '../format';
@@ -50,10 +51,12 @@ export function SellScreen() {
       if (!can(user, 'sales.prescription')) return toast(t('sell.rxAskPharmacist', { name: medicineLabel(m) }), 'error');
       return setRxFor(m);
     }
+    animateNextLayout();
     setCart((c) => [...c, { medicine: m, quantity: 1, prescription_id: null, prescription_label: null }]);
   };
 
   const changeQty = (medicineId: number, quantity: number) => {
+    if (quantity <= 0) animateNextLayout();
     setCart((c) =>
       c.flatMap((l) => {
         if (l.medicine.medicine_id !== medicineId) return [l];
@@ -65,6 +68,11 @@ export function SellScreen() {
         return [{ ...l, quantity }];
       })
     );
+  };
+
+  const clearCart = () => {
+    animateNextLayout();
+    setCart([]);
   };
 
   const openCheckout = () => {
@@ -120,13 +128,13 @@ export function SellScreen() {
         {!search && (medicines?.length ?? 0) > 8 ? <Text style={styles.more}>{t('sell.typeToSearch', { count: medicines?.length ?? 0 })}</Text> : null}
       </Card>
 
-      <SectionTitle right={cart.length ? <Button title={t('sell.clearCart')} variant="ghost" small onPress={() => setCart([])} /> : undefined}>
+      <SectionTitle right={cart.length ? <Button title={t('sell.clearCart')} variant="ghost" small onPress={clearCart} /> : undefined}>
         {t('sell.cart', { count: cart.reduce((s, l) => s + l.quantity, 0) })}
       </SectionTitle>
       <Card>
         {cart.length === 0 ? <EmptyState icon="cart-outline" text={t('sales.cartEmpty')} hint={t('sell.cartHint')} /> : null}
         {cart.map((l) => (
-          <View key={l.medicine.medicine_id} style={styles.cartRow}>
+          <Enter key={l.medicine.medicine_id} offset={-6} style={styles.cartRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{medicineLabel(l.medicine)}</Text>
               <Text style={styles.muted}>
@@ -135,11 +143,11 @@ export function SellScreen() {
             </View>
             <View style={styles.stepper}>
               <StepButton label="−" onPress={() => changeQty(l.medicine.medicine_id, l.quantity - 1)} />
-              <Text style={styles.qty}>{l.quantity}</Text>
+              <Quantity value={l.quantity} />
               <StepButton label="+" onPress={() => changeQty(l.medicine.medicine_id, l.quantity + 1)} />
             </View>
             <Text style={styles.lineTotal}>{money(l.quantity * l.medicine.selling_price)}</Text>
-          </View>
+          </Enter>
         ))}
         {cart.length ? (
           <View style={styles.totals}>
@@ -195,19 +203,27 @@ export function SellScreen() {
   );
 }
 
+/** Cart quantity; pops briefly when it changes. */
+function Quantity({ value }: { value: number }) {
+  const styles = useStyles();
+  const pop = usePop(value);
+  return <Animated.Text style={[styles.qty, pop]}>{value}</Animated.Text>;
+}
+
 function StepButton({ label, onPress }: { label: string; onPress: () => void }) {
   const { t } = useI18n();
   const { colors } = useTheme();
   const styles = useStyles();
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label === '+' ? t('sell.increase') : t('sell.decrease')}
       onPress={onPress}
-      style={(state: PressState) => [styles.step, state.hovered && { backgroundColor: colors.surfaceAlt }, state.pressed && { opacity: 0.6 }, focusRing(colors, state)]}
+      pressScale={0.85}
+      style={(state: PressState) => [styles.step, state.hovered && { backgroundColor: colors.surfaceAlt }, state.pressed && { backgroundColor: colors.surfaceAlt }, focusRing(colors, state)]}
     >
       <Text style={styles.stepText}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 

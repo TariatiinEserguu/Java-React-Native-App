@@ -285,15 +285,16 @@ flowchart TB
 | --- | --- | --- |
 | Framework | **Expo (React Native)**, SDK 58 | Already used by this repository |
 | Language | TypeScript | |
-| Database | **`expo-sqlite`** | Transactions, `PRAGMA user_version` migrations, `backupDatabaseAsync` for backup/restore |
+| Database | **`expo-sqlite`** | Transactions, versioned migrations (`src/db/migrations.ts`, `PRAGMA user_version`), WAL on native, `backupDatabaseAsync` for backup/restore |
 | Navigation | Custom bottom tabs + a "More" menu; move to **Expo Router** if more screens are added | — |
 | Password hashing | PBKDF2-HMAC-SHA256 in plain TypeScript (`src/services/password.ts`) | No native module needed; verified against Node's crypto |
 | Backup file sharing (future) | `expo-sharing` + `expo-file-system` / `expo-document-picker` | To copy the backup off the phone; install with `npx expo install` |
-| Tests | Node's test runner + built-in `node:sqlite` running the real schema and services (`npm test`) | 22 automated tests |
+| Tests | Node's test runner + built-in `node:sqlite` running the real schema and services (`npm test`) | 48 automated tests |
 
 ### Transactions in expo-sqlite
 
 `withExclusiveTransactionAsync` opens a **second connection**, where `PRAGMA foreign_keys` is off (and can't be switched
 on inside a transaction), and it isn't available on web. The app therefore uses `withTransactionAsync` on the main
 connection and serialises all write operations through one queue (`src/db/transaction.ts`), so two writes can never
-interleave.
+interleave. Screen reads (`useDbQuery`) go through the same queue: on a single connection an open transaction is visible
+to every statement, so a read sent mid-checkout would otherwise see — and keep showing — rows that are later rolled back.

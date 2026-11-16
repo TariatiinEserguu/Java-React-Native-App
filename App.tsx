@@ -1,15 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState, type ComponentType } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { Animated, StyleSheet, Text, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LanguageSwitch, ThemeToggle } from './src/components/PreferenceControls';
 import { ToastProvider } from './src/components/feedback';
-import { focusRing, Icon, type IconName, type PressState } from './src/components/ui';
-import { DataProvider } from './src/db/DataContext';
-import { DATABASE_NAME, migrate } from './src/db/schema';
+import { duration, timing, useAnimatedNumber, useIndicator, usePop, useReducedMotion } from './src/components/motion';
+import { focusRing, Icon, PressableScale, type IconName, type PressState } from './src/components/ui';
+import { DataProvider, ScreenActivity } from './src/db/DataContext';
+import { initDatabase } from './src/db/open';
+import { DATABASE_NAME } from './src/db/schema';
 import { I18nProvider, useI18n, type TranslationKey } from './src/i18n';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { InventoryScreen } from './src/screens/InventoryScreen';
@@ -39,7 +41,7 @@ export default function App() {
     <I18nProvider>
       <ThemeProvider>
         <SafeAreaProvider>
-          <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrate} onError={(e) => console.error('Database failed to open', e)}>
+          <SQLiteProvider databaseName={DATABASE_NAME} onInit={initDatabase} onError={(e) => console.error('Database failed to open', e)}>
             <DataProvider>
               <ToastProvider>
                 <SessionProvider>
@@ -119,20 +121,64 @@ function Shell() {
         {/* Screens stay mounted (hidden when inactive) so search text and the cart persist across tabs. */}
         <View style={{ flex: 1 }}>
           {TABS.map(({ key, Screen }) => (
-            <View key={key} style={[StyleSheet.absoluteFill, key !== active && styles.hidden]}>
-              <Screen onNavigate={setActive} />
-            </View>
+            <TabPane key={key} active={key === active}>
+              <ScreenActivity active={key === active}>
+                <Screen onNavigate={setActive} />
+              </ScreenActivity>
+            </TabPane>
           ))}
         </View>
       </View>
 
-      {wide ? null : (
-        <View accessibilityRole="tablist" accessibilityLabel={t('nav.main')} style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
-          {TABS.map((tab) => (
-            <TabButton key={tab.key} tab={tab} focused={tab.key === active} onPress={() => setActive(tab.key)} layout="bottom" />
-          ))}
-        </View>
-      )}
+      {wide ? null : <BottomTabs active={active} onSelect={setActive} bottomInset={insets.bottom} />}
+    </View>
+  );
+}
+
+/** A tab's screen. Coming into view it fades in and settles up from a few pixels below. */
+function TabPane({ active, children }: { active: boolean; children: ReactNode }) {
+  const styles = useStyles();
+  const reduce = useReducedMotion();
+  const shown = useAnimatedNumber(active ? 0 : 1);
+  useEffect(() => {
+    if (!active) return;
+    shown.setValue(0);
+    const animation = timing(shown, 1, reduce ? { duration: duration.fast } : {});
+    animation.start();
+    return () => animation.stop();
+  }, [active, reduce, shown]);
+  return (
+    <Animated.View
+      style={[
+        StyleSheet.absoluteFill,
+        !active && styles.hidden,
+        { opacity: shown, transform: reduce ? [] : [{ translateY: shown.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+const PILL_WIDTH = 56;
+
+/** Phone tab bar. A soft pill slides behind the icon of the selected tab. */
+function BottomTabs({ active, onSelect, bottomInset }: { active: string; onSelect: (key: string) => void; bottomInset: number }) {
+  const { t } = useI18n();
+  const styles = useStyles();
+  const index = TABS.findIndex((tab) => tab.key === active);
+  const { offset, target, onItemLayout } = useIndicator(index);
+  return (
+    <View accessibilityRole="tablist" accessibilityLabel={t('nav.main')} style={[styles.tabBar, { paddingBottom: Math.max(bottomInset, 6) }]}>
+      {target ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.tabPill, { top: target.y + 1, left: (target.width - PILL_WIDTH) / 2, transform: [{ translateX: offset }] }]}
+        />
+      ) : null}
+      {TABS.map((tab, i) => (
+        <TabButton key={tab.key} tab={tab} focused={tab.key === active} onPress={() => onSelect(tab.key)} layout="bottom" onLayout={onItemLayout(i)} />
+      ))}
     </View>
   );
 }
@@ -154,14 +200,18 @@ function NavRail({ active, onSelect }: { active: string; onSelect: (key: string)
   const { t } = useI18n();
   const { user } = useSession();
   const styles = useStyles();
+  const index = TABS.findIndex((tab) => tab.key === active);
+  const { offset, target, onItemLayout } = useIndicator(index, 'y');
   return (
     <View style={styles.rail}>
       <View style={styles.railBrand}>
         <Brand />
       </View>
       <View accessibilityRole="tablist" accessibilityLabel={t('nav.main')} style={{ gap: 2, flex: 1 }}>
-        {TABS.map((tab) => (
-          <TabButton key={tab.key} tab={tab} focused={tab.key === active} onPress={() => onSelect(tab.key)} layout="rail" />
+        {/* The highlight glides to the selected item. */}
+        {target ? <Animated.View pointerEvents="none" style={[styles.railPill, { height: target.height, transform: [{ translateY: offset }] }]} /> : null}
+        {TABS.map((tab, i) => (
+          <TabButton key={tab.key} tab={tab} focused={tab.key === active} onPress={() => onSelect(tab.key)} layout="rail" onLayout={onItemLayout(i)} />
         ))}
       </View>
       <View style={styles.railFooter}>
@@ -189,31 +239,47 @@ function NavRail({ active, onSelect }: { active: string; onSelect: (key: string)
   );
 }
 
-function TabButton({ tab, focused, onPress, layout }: { tab: (typeof TABS)[number]; focused: boolean; onPress: () => void; layout: 'bottom' | 'rail' }) {
+function TabButton({
+  tab,
+  focused,
+  onPress,
+  layout,
+  onLayout,
+}: {
+  tab: (typeof TABS)[number];
+  focused: boolean;
+  onPress: () => void;
+  layout: 'bottom' | 'rail';
+  onLayout?: (e: LayoutChangeEvent) => void;
+}) {
   const { t } = useI18n();
   const { colors } = useTheme();
   const styles = useStyles();
   const rail = layout === 'rail';
   const color = rail ? (focused ? colors.text : colors.muted) : focused ? colors.primary : colors.muted;
+  // The icon of the newly selected tab gives a small pop.
+  const pop = usePop(focused);
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
       accessibilityLabel={t(tab.label)}
       onPress={onPress}
+      onLayout={onLayout}
+      pressScale={rail ? 0.98 : 0.92}
       style={(state: PressState) => [
         rail ? styles.railItem : styles.tab,
-        rail && focused && { backgroundColor: colors.surfaceAlt },
         rail && state.hovered && !focused && { backgroundColor: colors.surfaceAlt + '99' },
-        !rail && state.pressed && { opacity: 0.6 },
         focusRing(colors, state),
       ]}
     >
-      <Icon name={focused ? tab.iconActive : tab.icon} size={rail ? 20 : 22} color={color} />
+      <Animated.View style={focused ? pop : null}>
+        <Icon name={focused ? tab.iconActive : tab.icon} size={rail ? 20 : 22} color={color} />
+      </Animated.View>
       <Text numberOfLines={1} style={[rail ? styles.railLabel : styles.tabLabel, { color }, focused && { fontWeight: '600' }]}>
         {t(tab.label)}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -253,10 +319,12 @@ const useStyles = makeStyles((colors) => ({
     paddingTop: 6,
   },
   tab: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4, minHeight: 48, borderRadius: 8 },
+  tabPill: { position: 'absolute', width: PILL_WIDTH, height: 28, borderRadius: 14, backgroundColor: colors.primarySoft },
   tabLabel: { fontSize: 11, fontWeight: '500', maxWidth: '100%', paddingHorizontal: 2 },
   rail: { width: 232, padding: 12, backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border },
   railBrand: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 18 },
   railItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, minHeight: 38, borderRadius: 8, ...transition },
+  railPill: { position: 'absolute', top: 0, left: 0, right: 0, borderRadius: 8, backgroundColor: colors.surfaceAlt },
   railLabel: { fontSize: 14, fontWeight: '500', flexShrink: 1 },
   railFooter: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4 },

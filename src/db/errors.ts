@@ -59,6 +59,20 @@ const FRIENDLY: [RegExp, TranslationKey][] = [
   [/Prescriptions must be verified by an active pharmacist/i, 'trigger.rxVerifier'],
 ];
 
+// v_integrity_issues stores English text; each known message is translated for display.
+const INTEGRITY_ISSUES: Record<string, TranslationKey> = {
+  'Batch balance differs from movement ledger': 'integrity.batchBalance',
+  'Completed order without items': 'integrity.orderNoItems',
+  'Order subtotal differs from its lines': 'integrity.subtotal',
+  'Sold quantity differs from batch allocations': 'integrity.soldQty',
+  'Returned quantity differs from RETURN movements': 'integrity.returnedQty',
+  'Prescription medicine sold without prescription': 'integrity.rx',
+};
+
+export function integrityIssueText(issue: string) {
+  return INTEGRITY_ISSUES[issue] ? t(INTEGRITY_ISSUES[issue]) : issue;
+}
+
 /** For form/CRUD actions: map common constraint errors to plain language. Trigger messages pass through. */
 export function friendlyError(error: unknown): string {
   const message = sqliteMessage(error);

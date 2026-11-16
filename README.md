@@ -34,7 +34,7 @@ With Expo Go on a phone, scan the QR code shown by `npx expo start` (phone and c
 ## Checks
 
 ```bash
-npm test             # 33 tests: backend rules (schema, triggers, services, reports on Node's built-in SQLite) and translations
+npm test             # 48 tests: backend rules, migrations and database tools (on Node's built-in SQLite) and translations
 npm run typecheck    # TypeScript (app + tests)
 npm run lint         # ESLint (expo lint)
 ```
@@ -47,7 +47,7 @@ npm run lint         # ESLint (expo lint)
 | **Medicines** | Search by brand / generic name / barcode, filter by category or stock state, add / edit / deactivate, see batches |
 | **Sell** | Cart, FEFO batch allocation, prescription check for Rx-only items, discounts, payment method, receipt |
 | **Inventory** | Batches by expiry state, receive stock, adjust, write off, quarantine, full movement log |
-| **More** | Orders & refunds, customers, suppliers, categories, 11 reports, staff accounts, settings, backup/restore, integrity check, SQL console |
+| **More** | Orders & refunds, customers, suppliers, categories, 11 reports, staff accounts, settings, backup/restore, integrity check, database console (overview, SQL editor with query plans, table browser) |
 
 ## Language and theme
 
@@ -63,6 +63,21 @@ All interface text lives in `src/i18n/locales/en.ts` (defines the keys) and `src
 
 Colours are tokens in `src/theme.tsx` (`light` and `dark` palettes). Components never hardcode hex values: define styles with `makeStyles((colors) => ({ ... }))` and call the returned hook in the component.
 
+### Motion
+
+Animations use React Native's `Animated` API on the native driver (no extra native modules, so it runs in Expo Go and on web). Timings, easings and springs live in one place, `src/components/motion.tsx`, together with the building blocks:
+
+| Where | What moves |
+| --- | --- |
+| Sheets, forms, pickers (`ModalFrame`) | Phone: the sheet springs up, can be dragged down by its header to close, and slides away with its content intact; the backdrop fades on its own. Wide screens: a centred dialog fades and scales in |
+| Buttons, chips, list rows, tabs (`PressableScale`) | Dip slightly while pressed and spring back |
+| Lists (`ListItem index`, `Enter`) | Rows fade and rise in one after another (capped, so long lists don't trickle) |
+| Tabs, segmented controls, language/theme switches (`useIndicator`) | The highlight slides to the chosen item; switching tabs fades the screen in |
+| Dashboard (`CountUp`) | Figures count up from their previous value, so a new sale visibly adds to the total |
+| Toasts, login, cart | Toasts drop in and slide away (tap to dismiss); a wrong password shakes the form; cart quantities pop |
+
+When the device asks to **reduce motion**, slides, scales and springs are skipped and at most a short fade remains.
+
 ## The SQL backend
 
 - **11 tables**: `users`, `categories`, `medicines`, `suppliers`, `medicine_batches`, `customers`, `prescriptions`,
@@ -74,7 +89,17 @@ Colours are tokens in `src/theme.tsx` (`light` and `dark` palettes). Components 
   sold; stock can't be deducted twice; completed orders can't be edited or deleted; Rx-only items need a prescription
   verified by a pharmacist; the order status follows a state machine; the last admin can't be removed.
 - **Views**: `v_batch_status`, `v_medicine_stock`, `v_sales`, `v_line_cost`, `v_integrity_issues`.
-- **Transactions**: checkout, refunds, receiving, adjustments and write-offs are each all-or-nothing.
+- **Indexes** for every search, join and report filter, including expression indexes on the sale day and movement day
+  and a partial index for FEFO allocation (check them with *Explain* in the SQL editor).
+- **Migrations** (`src/db/migrations.ts`): each schema change is a numbered migration; pending ones run in order inside
+  one transaction on start-up, and `PRAGMA user_version` records the last one applied. Triggers and views are rebuilt
+  from their current definitions after an upgrade. A restored backup from an older version is upgraded the same way;
+  one from a newer version is refused.
+- **Connection**: foreign keys on, a busy timeout, and write-ahead logging (`journal_mode = WAL`, `synchronous = NORMAL`)
+  on Android and iOS for faster commits.
+- **Transactions**: checkout, refunds, receiving, adjustments and write-offs are each all-or-nothing. Writes and screen
+  reads take turns on the one connection (`src/db/transaction.ts`), so a screen never shows a half-finished sale.
+- **Refreshing**: after a write, the visible screen re-queries; tabs in the background catch up when they are opened.
 - **Passwords**: PBKDF2-HMAC-SHA256 with per-user salt.
 
 ## Project structure
@@ -84,14 +109,19 @@ App.tsx                    app shell: providers, login gate, side rail (wide) or
 src/i18n/                  translation core (t / tn), React provider, English and Mongolian dictionaries
 src/theme.tsx              light/dark palettes, ThemeProvider, makeStyles
 src/preferences.ts         saved language and theme (kv-store on device, localStorage on web)
-src/db/schema.ts           tables, constraints, indexes, triggers, views, migration (PRAGMA user_version)
+src/db/schema.ts           tables, constraints, indexes, triggers, views (SQL definitions)
+src/db/migrations.ts       versioned migrations (PRAGMA user_version), connection settings, reset
+src/db/open.ts             opens the database on start-up (migrate + WAL on native)
 src/db/seed.ts             demo data (goes through the same service functions as the app)
 src/db/repository.ts       read queries for the screens
 src/db/reports.ts          report queries
-src/db/transaction.ts      serialised transactions on the main connection
+src/db/sqlRunner.ts        SQL console: script runner, schema browser, query plans, overview, health check, maintenance
+src/db/transaction.ts      one queue for transactions and screen reads on the main connection
+src/db/DataContext.tsx     useDbQuery: reload after writes, paused for hidden tabs
 src/services/              business logic + permission checks: sales, inventory, catalog, users, settings, backup, password
 src/screens/               Login, Dashboard, Medicines, Sell, Inventory, more/ (Orders, people, Reports, Settings), database/ (SQL console)
 src/components/            buttons, fields, sheets, select, data table, toasts, language/theme controls, form hooks
-tests/                     backend tests on node:sqlite
+src/components/motion.tsx  motion system: timings, springs, entrance, presence, indicators, count-up, reduced motion
+tests/                     backend, database and translation tests on node:sqlite
 docs/                      design documentation (ERD, diagrams, rules, tests)
 ```

@@ -138,8 +138,8 @@ export function MedicinesScreen() {
       {!medicines && !error ? <LoadingState /> : null}
       {medicines?.length === 0 ? <EmptyState icon="search-outline" text={t('medicines.empty')} hint={t('medicines.emptyHint')} /> : null}
 
-      {medicines?.map((m) => (
-        <ListItem key={m.medicine_id} onPress={() => setDetail(m)}>
+      {medicines?.map((m, i) => (
+        <ListItem index={i} key={m.medicine_id} onPress={() => setDetail(m)}>
           <View style={styles.top}>
             <Text style={styles.name}>{medicineLabel(m)}</Text>
             {m.requires_prescription ? <Badge label={t('medicine.rx')} tone="info" /> : null}
@@ -228,11 +228,14 @@ function MedicineDetail({
   const { t } = useI18n();
   const styles = useStyles();
   const { data: batches } = useDbQuery((db) => (medicine ? listBatches(db, { medicineId: medicine.medicine_id }) : Promise.resolve([])), [medicine?.medicine_id]);
-  if (!medicine) return null;
-  const m = medicine;
+  // Keep the last medicine while the sheet animates closed.
+  const [last, setLast] = useState(medicine);
+  if (medicine && medicine !== last) setLast(medicine);
+  const m = medicine ?? last;
+  if (!m) return null;
   return (
     <Sheet
-      visible
+      visible={!!medicine}
       title={medicineLabel(m)}
       subtitle={m.is_active ? undefined : t('common.inactive')}
       onClose={onClose}

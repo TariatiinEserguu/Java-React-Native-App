@@ -1,6 +1,7 @@
 import { useState, type ComponentType } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
+import { Enter } from '../../components/motion';
 import { Button, Icon, ListItem, ScreenHeader, screen, type IconName } from '../../components/ui';
 import { useI18n, type TranslationKey } from '../../i18n';
 import { can, roleLabel, type Permission } from '../../services/permissions';
@@ -41,17 +42,19 @@ export function MoreScreen() {
     // The SQL console brings its own header and scroll view.
     if (page.key === 'sql') {
       return (
-        <View style={{ flex: 1 }}>
+        <Enter key={page.key} style={{ flex: 1 }}>
           <View style={styles.back}>{back}</View>
           <DatabaseScreen />
-        </View>
+        </Enter>
       );
     }
     return (
       <ScrollView contentContainerStyle={screen.content} keyboardShouldPersistTaps="handled">
-        {back}
-        <ScreenHeader title={t(page.title)} subtitle={t(page.description)} />
-        <page.Screen />
+        <Enter key={page.key}>
+          {back}
+          <ScreenHeader title={t(page.title)} subtitle={t(page.description)} />
+          <page.Screen />
+        </Enter>
       </ScrollView>
     );
   }
@@ -59,8 +62,8 @@ export function MoreScreen() {
   return (
     <ScrollView contentContainerStyle={screen.content}>
       <ScreenHeader title={t('nav.more')} subtitle={`${user.full_name} · ${roleLabel(user.role)}`} />
-      {pages.map((p) => (
-        <ListItem key={p.key} onPress={() => setOpen(p.key)}>
+      {pages.map((p, i) => (
+        <ListItem index={i} key={p.key} onPress={() => setOpen(p.key)}>
           <View style={styles.row}>
             <View style={styles.iconWrap}>
               <Icon name={p.icon} size={22} />

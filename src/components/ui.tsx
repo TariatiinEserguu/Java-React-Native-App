@@ -9,15 +9,17 @@ import {
   Text,
   TextInput,
   View,
+  type PressableProps,
   type PressableStateCallbackType,
   type StyleProp,
   type TextInputProps,
+  type TextStyle,
   type ViewStyle,
 } from 'react-native';
 
 import { useI18n } from '../i18n';
 import { fontSize, makeStyles, radius, radiusLg, space, transition, useTheme, type Palette } from '../theme';
-import { useReducedMotion } from './motion';
+import { nativeDriver, spring, springTo, useAnimatedNumber, useCountUp, useEnterStyle, useIndicator, useReducedMotion } from './motion';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -43,6 +45,81 @@ export function focusRing(colors: Palette, state: PressState): ViewStyle {
 }
 
 const webPointer = Platform.OS === 'web' ? ({ cursor: 'pointer', ...transition } as ViewStyle) : null;
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+type AnimatedStyle = Record<string, unknown> | null | undefined;
+
+/**
+ * Pressable that dips slightly when pressed and springs back on release. Hover, focus and press
+ * state are tracked here (Animated can't take a style function) and handed to `style`/`children`.
+ * `enter` is an optional entrance style from useEnterStyle; its transform is combined with the scale.
+ */
+export function PressableScale({
+  style,
+  children,
+  pressScale = 0.97,
+  enter,
+  disabled,
+  onPressIn,
+  onPressOut,
+  onHoverIn,
+  onHoverOut,
+  onFocus,
+  onBlur,
+  ...rest
+}: Omit<PressableProps, 'style' | 'children'> & {
+  style?: StyleProp<ViewStyle> | ((state: PressState) => StyleProp<ViewStyle>);
+  children?: ReactNode | ((state: PressState) => ReactNode);
+  pressScale?: number;
+  enter?: AnimatedStyle;
+}) {
+  const reduce = useReducedMotion();
+  const scale = useAnimatedNumber(1);
+  const [pressed, setPressed] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const state: PressState = { pressed, hovered, focused };
+  const animate = !reduce && !disabled && pressScale !== 1;
+
+  const enterTransform = (enter?.transform as object[] | undefined) ?? [];
+  return (
+    <AnimatedPressable
+      {...rest}
+      disabled={disabled}
+      onPressIn={(e) => {
+        setPressed(true);
+        if (animate) springTo(scale, pressScale, spring.press).start();
+        onPressIn?.(e);
+      }}
+      onPressOut={(e) => {
+        setPressed(false);
+        if (animate) springTo(scale, 1, spring.press).start();
+        else scale.setValue(1);
+        onPressOut?.(e);
+      }}
+      onHoverIn={(e) => {
+        setHovered(true);
+        onHoverIn?.(e);
+      }}
+      onHoverOut={(e) => {
+        setHovered(false);
+        onHoverOut?.(e);
+      }}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
+      style={[typeof style === 'function' ? style(state) : style, enter ? { opacity: enter.opacity as number } : null, { transform: [...enterTransform, { scale }] }]}
+    >
+      {typeof children === 'function' ? children(state) : children}
+    </AnimatedPressable>
+  );
+}
 
 export function Icon({ name, size = 20, color }: { name: IconName; size?: number; color?: string }) {
   const { colors } = useTheme();
@@ -77,12 +154,13 @@ export function Button({
   const palette = buttonPalette(colors)[variant];
   const fg = disabled ? colors.disabledText : palette.fg;
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       accessibilityLabel={title}
       onPress={onPress}
       disabled={inactive}
+      pressScale={small ? 0.95 : 0.97}
       style={(state: PressState) => [
         styles.button,
         small && styles.buttonSmall,
@@ -91,7 +169,6 @@ export function Button({
           borderColor: disabled && variant !== 'ghost' ? colors.disabledBg : palette.border,
         },
         !inactive && webPointer,
-        state.pressed && !inactive && { transform: [{ scale: 0.98 }] },
         focusRing(colors, state),
         style,
       ]}
@@ -104,7 +181,7 @@ export function Button({
           <Text style={[styles.buttonText, small && styles.buttonTextSmall, { color: fg }]}>{title}</Text>
         </View>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -115,18 +192,22 @@ const buttonPalette = (c: Palette): Record<ButtonVariant, { bg: string; hover: s
   ghost: { bg: 'transparent', hover: c.surfaceAlt, pressed: c.surfaceAlt, fg: c.text, border: 'transparent' },
 });
 
-/** Compact icon-only control (theme toggle, close). The label is required for screen readers and tooltips. */
-export function IconButton({ icon, label, onPress, active }: { icon: IconName; label: string; onPress: () => void; active?: boolean }) {
+/**
+ * Compact icon-only control (theme toggle, close). The label is required for screen readers and
+ * tooltips. `children` replaces the icon (e.g. an animated one).
+ */
+export function IconButton({ icon, label, onPress, active, children }: { icon: IconName; label: string; onPress: () => void; active?: boolean; children?: ReactNode }) {
   const { colors } = useTheme();
   const styles = useStyles();
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
       // @ts-expect-error `title` is a web-only tooltip prop that react-native-web forwards to the DOM.
       title={label}
       onPress={onPress}
       hitSlop={6}
+      pressScale={0.88}
       style={(state: PressState) => [
         styles.iconButton,
         (state.hovered || state.pressed || active) && { backgroundColor: colors.surfaceAlt },
@@ -134,8 +215,8 @@ export function IconButton({ icon, label, onPress, active }: { icon: IconName; l
         focusRing(colors, state),
       ]}
     >
-      <Icon name={icon} size={20} color={colors.text} />
-    </Pressable>
+      {children ?? <Icon name={icon} size={20} color={colors.text} />}
+    </PressableScale>
   );
 }
 
@@ -270,10 +351,11 @@ export function Chip({ label, active, onPress }: { label: string; active?: boole
   const { colors } = useTheme();
   const styles = useStyles();
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
       onPress={onPress}
+      pressScale={0.94}
       style={(state: PressState) => [
         styles.chip,
         state.hovered && !active && { backgroundColor: colors.surfaceAlt },
@@ -283,20 +365,21 @@ export function Chip({ label, active, onPress }: { label: string; active?: boole
       ]}
     >
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
 export function EmptyState({ text, hint, icon = 'file-tray-outline' }: { text: string; hint?: string; icon?: IconName }) {
   const styles = useStyles();
+  const enter = useEnterStyle({ offset: 6 });
   return (
-    <View style={styles.empty}>
+    <Animated.View style={[styles.empty, enter]}>
       <View style={styles.emptyIcon}>
         <Icon name={icon} size={22} />
       </View>
       <Text style={styles.emptyText}>{text}</Text>
       {hint ? <Text style={styles.emptyHint}>{hint}</Text> : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -309,8 +392,8 @@ export function Skeleton({ width = '100%', height = 14, style }: { width?: ViewS
     if (reduce) return;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: Platform.OS !== 'web' }),
-        Animated.timing(pulse, { toValue: 0.55, duration: 800, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: nativeDriver }),
+        Animated.timing(pulse, { toValue: 0.55, duration: 800, useNativeDriver: nativeDriver }),
       ])
     );
     loop.start();
@@ -338,11 +421,12 @@ export function LoadingState({ text, rows = 4 }: { text?: string; rows?: number 
 export function ErrorBanner({ message }: { message: string }) {
   const { colors } = useTheme();
   const styles = useStyles();
+  const enter = useEnterStyle({ offset: -6 });
   return (
-    <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.errorBanner}>
+    <Animated.View accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.errorBanner, enter]}>
       <Icon name="alert-circle-outline" size={18} color={colors.danger} />
       <Text style={styles.errorBannerText}>{message}</Text>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -357,15 +441,20 @@ export function Segmented<T extends string>({
 }) {
   const { colors } = useTheme();
   const styles = useStyles();
+  const active = Math.max(0, options.findIndex(([key]) => key === value));
+  const { offset, target, onItemLayout } = useIndicator(active);
   return (
     <View style={styles.segment} accessibilityRole="tablist">
-      {options.map(([key, label]) => (
+      {/* The thumb slides between segments; until they are measured the active one draws its own background. */}
+      {target ? <Animated.View pointerEvents="none" style={[styles.segmentThumb, { top: target.y, width: target.width, height: target.height, transform: [{ translateX: offset }] }]} /> : null}
+      {options.map(([key, label], i) => (
         <Pressable
           key={key}
           accessibilityRole="tab"
           accessibilityState={{ selected: value === key }}
           onPress={() => onChange(key)}
-          style={(state: PressState) => [styles.segmentItem, value === key && styles.segmentActive, webPointer, focusRing(colors, state)]}
+          onLayout={onItemLayout(i)}
+          style={(state: PressState) => [styles.segmentItem, value === key && !target && styles.segmentActive, webPointer, focusRing(colors, state)]}
         >
           <Text numberOfLines={2} style={[styles.segmentText, value === key && styles.segmentTextActive]}>
             {label}
@@ -376,14 +465,50 @@ export function Segmented<T extends string>({
   );
 }
 
-export function Stat({ label, value, note, tone, icon, onPress }: { label: string; value: string; note?: string; tone?: BadgeTone; icon?: IconName; onPress?: () => void }) {
+/** Animated figure: counts from its previous value to `value`, formatted on every frame. */
+export function CountUp({ value, format = String, style }: { value: number; format?: (n: number) => string; style?: StyleProp<TextStyle> }) {
+  const shown = useCountUp(value);
+  // Screen readers get the final figure, not the frames in between.
+  return (
+    <Text style={style} accessibilityLabel={format(value)}>
+      {format(shown)}
+    </Text>
+  );
+}
+
+export function Stat({
+  label,
+  value,
+  count,
+  format,
+  note,
+  tone,
+  icon,
+  onPress,
+  index,
+}: {
+  label: string;
+  /** Static text, or pass `count` (+ `format`) to have the number count up. */
+  value?: string;
+  count?: number;
+  format?: (n: number) => string;
+  note?: string;
+  tone?: BadgeTone;
+  icon?: IconName;
+  onPress?: () => void;
+  /** Position in a group of stats, for a staggered entrance. */
+  index?: number;
+}) {
   const { colors } = useTheme();
   const styles = useStyles();
+  const enter = useEnterStyle({ index: index ?? 0, offset: 12 });
+  const valueStyle = [styles.statValue, { color: toneColor(colors, tone) }];
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole={onPress ? 'button' : undefined}
       disabled={!onPress}
       onPress={onPress}
+      enter={enter}
       style={(state: PressState) => [
         styles.card,
         styles.stat,
@@ -399,9 +524,9 @@ export function Stat({ label, value, note, tone, icon, onPress }: { label: strin
         </Text>
         {icon ? <Icon name={icon} size={16} color={tone ? toneColor(colors, tone) : colors.muted} /> : null}
       </View>
-      <Text style={[styles.statValue, { color: toneColor(colors, tone) }]}>{value}</Text>
+      {count !== undefined ? <CountUp value={count} format={format} style={valueStyle} /> : <Text style={valueStyle}>{value}</Text>}
       {note ? <Text style={styles.hint}>{note}</Text> : null}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -427,15 +552,18 @@ export function ToggleField({ label, value, onChange, hint }: { label: string; v
   );
 }
 
-/** Tappable list item card. */
-export function ListItem({ children, onPress, style }: { children: ReactNode; onPress?: () => void; style?: StyleProp<ViewStyle> }) {
+/** Tappable list item card. Pass `index` to fade the rows of a list in one after another. */
+export function ListItem({ children, onPress, style, index }: { children: ReactNode; onPress?: () => void; style?: StyleProp<ViewStyle>; index?: number }) {
   const { colors } = useTheme();
   const styles = useStyles();
+  const enter = useEnterStyle({ index, enabled: index !== undefined });
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole={onPress ? 'button' : undefined}
       disabled={!onPress}
       onPress={onPress}
+      pressScale={0.985}
+      enter={enter}
       style={(state: PressState) => [
         styles.card,
         styles.listItem,
@@ -447,7 +575,7 @@ export function ListItem({ children, onPress, style }: { children: ReactNode; on
       ]}
     >
       {children}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -550,6 +678,15 @@ export const useStyles = makeStyles((colors) => ({
   segment: { flexDirection: 'row', backgroundColor: colors.surfaceAlt, borderRadius: radius + 2, padding: 3, marginBottom: space.md },
   segmentItem: { flex: 1, paddingVertical: 7, paddingHorizontal: 6, borderRadius: radius, alignItems: 'center', justifyContent: 'center', minHeight: 38 },
   segmentActive: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  segmentThumb: {
+    position: 'absolute',
+    left: 0,
+    backgroundColor: colors.surface,
+    borderRadius: radius,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...(Platform.OS === 'web' ? ({ boxShadow: '0 1px 2px rgba(0,0,0,0.08)' } as object) : null),
+  },
   segmentText: { fontWeight: '600', fontSize: fontSize.small, color: colors.muted, textAlign: 'center' },
   segmentTextActive: { color: colors.text },
   stat: { flexGrow: 1, flexBasis: 160 },

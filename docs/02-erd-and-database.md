@@ -318,8 +318,26 @@ Add indexes for searches, sorting and joins that actually happen. Foreign keys a
 | orders | `customer_id`, `user_id` | Customer history, staff report |
 | order_items | `order_id`, `medicine_id`, `prescription_id` | Order detail, best sellers |
 | stock_movements | `(batch_id, movement_date)`, `order_item_id`, `user_id` | Batch history, allocations |
+| orders | `date(completed_at)` (expression, schema v2) | Today's sales on the dashboard, daily sales reports (`v_sales.sale_date`) |
+| stock_movements | `date(movement_date)` (expression, v2), `(movement_date, movement_id)` (v2) | Movement reports by day, newest-first movement log |
+| medicine_batches | `(medicine_id, expiry_date, batch_id) WHERE is_active = 1 AND quantity_remaining > 0` (partial, v2) | FEFO allocation at checkout reads only sellable batches, already in order |
 
-Don't index everything: each index slows down inserts and takes space.
+Don't index everything: each index slows down inserts and takes space. The SQL console's **Explain** button shows which
+index a query uses (`SEARCH … USING INDEX`) or where it reads a whole table (`SCAN`).
+
+### Schema versions and migrations
+
+`src/db/migrations.ts` lists every schema change as a numbered migration. On start-up the app reads
+`PRAGMA user_version`, runs the pending migrations in order inside **one** transaction (an upgrade either completes or
+leaves the file untouched), rebuilds the app's triggers and views from their current definitions, and stores the new
+version. A database from a newer app version is refused rather than guessed at.
+
+| Version | Change |
+| --- | --- |
+| 1 | Tables, constraints and indexes (§2.3–2.8) |
+| 2 | Expression and partial indexes for daily sales, the stock ledger and FEFO allocation |
+
+Rule for future changes: never edit a migration that has shipped; append version *n + 1*.
 
 ## 2.9 Worked examples (use these to check your ERD)
 

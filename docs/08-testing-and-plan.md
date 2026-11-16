@@ -2,7 +2,7 @@
 
 ## 8.1 How the backend is tested
 
-`npm test` runs `tests/backend.test.ts` with Node's test runner. `tests/nodeDb.ts` puts Node's built-in SQLite
+`npm test` runs `tests/backend.test.ts`, `tests/database.test.ts` and `tests/i18n.test.ts` with Node's test runner. `tests/nodeDb.ts` puts Node's built-in SQLite
 (`node:sqlite`) behind the same small async API the app uses from `expo-sqlite`, so the tests run the **real** schema,
 triggers, views, seed data, services and reports — no mocks. Each test starts from a fresh in-memory database.
 
@@ -36,10 +36,16 @@ protection applies to anything typed into the in-app SQL console).
 | TC-21 | Integrity check after all operations | `v_integrity_issues` empty, `PRAGMA foreign_key_check` empty | Automated (+ Settings screen) |
 | TC-22 | Deactivate or demote the last admin | Refused by a trigger | Automated |
 | TC-23 | Password hashing | SHA-256 and PBKDF2 match RFC test vectors and Node's crypto | Automated |
+| TC-24 | Open a database made by the previous version (schema v1) | Upgraded to v2; data, user-made views and integrity intact | Automated |
+| TC-25 | An upgrade fails half-way | Nothing of it is kept; still at the old version | Automated |
+| TC-26 | Database from a newer app version | Refused, not opened | Automated |
+| TC-27 | A screen refreshes while a checkout is rolling back | It never shows the rolled-back rows | Automated |
+| TC-28 | Daily sales, movement log, FEFO queries | `EXPLAIN QUERY PLAN` shows the v2 indexes | Automated |
 
-Latest run: **22 automated tests, 22 passed** (several IDs above share one test). The web build was also driven
-end-to-end in a headless browser (login → dashboard → sale → receipt → inventory → reports → integrity check) with no
-console errors.
+Latest run: **48 automated tests, 48 passed** (several IDs above share one test). The web build was also driven
+end-to-end in a headless browser at phone and desktop widths (login with a wrong password → dashboard → medicine sheet
+open/close → sale → receipt → settings → database overview, health check, query plan, table browser) with no console
+errors or warnings.
 
 ### Manual test script (≈5 minutes, on a phone)
 
@@ -58,6 +64,7 @@ console errors.
 | Area | Status |
 | --- | --- |
 | Schema: 11 tables, CHECK / UNIQUE / FK constraints, 17 triggers, 5 views, indexes | ✅ `src/db/schema.ts` |
+| Versioned migrations (v1 → v2), WAL on native, read/write queue | ✅ `src/db/migrations.ts`, `src/db/transaction.ts` |
 | Demo data: 3 users, 8 categories, 4 suppliers, 24 medicines, 28 batches, 6 customers, 25 sales, refund, adjustment, write-off | ✅ `src/db/seed.ts` |
 | Login with roles, auto-lock, password change | ✅ |
 | Medicines, categories, suppliers, customers, staff (CRUD + deactivate) | ✅ |
@@ -66,7 +73,8 @@ console errors.
 | Refunds (partial/full, restock or write off) | ✅ |
 | Dashboard and 11 SQL reports | ✅ |
 | Backup & restore (on-device copy) | ✅ Android/iOS; not on web |
-| Integrity check screen | ✅ |
+| Integrity check screen | ✅ Settings, and the database console's health check |
+| Motion system (sheets, press feedback, sliding indicators, list entrance, count-up; reduce-motion aware) | ✅ `src/components/motion.tsx` |
 | PENDING (saved) carts — FR-12 | ⏳ Schema and state machine ready, no screen yet |
 | Export backup file off the phone, barcode scanning, Expo Router navigation | ⏳ Future work |
 

@@ -1,22 +1,15 @@
-import type { SQLiteDatabase } from 'expo-sqlite';
-
-import { seed } from './seed';
-import { runInTransaction } from './transaction';
-
 export const DATABASE_NAME = 'pharmacare.db';
-
-// Bump this and add a migration step when the schema changes.
-export const SCHEMA_VERSION = 1;
 
 /*
  * PharmaCare schema — see docs/02-erd-and-database.md and docs/03-data-dictionary.md.
+ * The definitions here are applied by the versioned migrations in ./migrations.ts.
  *
  * Conventions: money is whole MNT (INTEGER), dates are 'YYYY-MM-DD', timestamps are local
  * 'YYYY-MM-DD HH:MM:SS'. SQLite CHECK constraints treat NULL as "passes", so nullable columns
  * are compared with IS / IFNULL where it matters. CHECKs can't call date('now'), so rules that
  * depend on today's date live in triggers.
  */
-const TABLES_SQL = `
+export const TABLES_SQL = `
 CREATE TABLE IF NOT EXISTS users (
   user_id       INTEGER PRIMARY KEY AUTOINCREMENT,
   full_name     TEXT    NOT NULL CHECK (length(trim(full_name)) BETWEEN 2 AND 100),
@@ -168,7 +161,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 `;
 
-const INDEXES_SQL = `
+export const INDEXES_SQL = `
 CREATE INDEX IF NOT EXISTS idx_medicines_brand ON medicines(brand_name);
 CREATE INDEX IF NOT EXISTS idx_medicines_generic ON medicines(generic_name);
 CREATE INDEX IF NOT EXISTS idx_medicines_category ON medicines(category_id);
@@ -194,8 +187,21 @@ CREATE INDEX IF NOT EXISTS idx_movements_order_item ON stock_movements(order_ite
 CREATE INDEX IF NOT EXISTS idx_movements_user ON stock_movements(user_id);
 `;
 
+// Schema version 2. Each index serves a query that ran as a full table scan before (check with
+// EXPLAIN QUERY PLAN in the SQL console).
+export const QUERY_INDEXES_SQL = `
+-- Daily sales: v_sales.sale_date is date(completed_at); the dashboard and the sales reports filter on it.
+CREATE INDEX IF NOT EXISTS idx_orders_sale_day ON orders(date(completed_at));
+-- Movement reports filter by day; the movement log lists the newest movements first.
+CREATE INDEX IF NOT EXISTS idx_movements_day ON stock_movements(date(movement_date));
+CREATE INDEX IF NOT EXISTS idx_movements_date ON stock_movements(movement_date, movement_id);
+-- FEFO allocation at checkout reads only sellable batches of one medicine, earliest expiry first.
+CREATE INDEX IF NOT EXISTS idx_batches_fefo ON medicine_batches(medicine_id, expiry_date, batch_id)
+  WHERE is_active = 1 AND quantity_remaining > 0;
+`;
+
 // Business rules the database enforces itself, so they hold even for writes from the SQL console.
-const TRIGGERS_SQL = `
+export const TRIGGERS_SQL = `
 -- BR-21: the last active admin can't be demoted or deactivated.
 CREATE TRIGGER IF NOT EXISTS trg_users_keep_admin
 BEFORE UPDATE OF role, is_active ON users
@@ -383,7 +389,7 @@ END;
 `;
 
 // Read models used by screens, reports and the SQL console. Definitions match docs/07-reports.md.
-const VIEWS_SQL = `
+export const VIEWS_SQL = `
 CREATE VIEW IF NOT EXISTS v_batch_status AS
 SELECT b.*,
        m.brand_name, m.generic_name, m.strength, m.unit, m.category_id,
@@ -502,45 +508,6 @@ export const BUSINESS_TABLES = [
   'app_settings',
 ];
 
-/** Creates tables, constraints, triggers and views (idempotent). */
-export async function createSchema(db: SQLiteDatabase) {
-  await db.execAsync(TABLES_SQL + INDEXES_SQL + TRIGGERS_SQL + VIEWS_SQL + HISTORY_TABLE_SQL);
-  for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
-    await db.runAsync('INSERT OR IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)', key, value);
-  }
-}
-
-/** Runs on app start (via SQLiteProvider.onInit): creates the schema and seeds sample data once. */
-export async function migrate(db: SQLiteDatabase, options: { seed?: boolean } = {}) {
-  // Foreign keys are off by default in SQLite and are a per-connection setting.
-  await db.execAsync('PRAGMA foreign_keys = ON;');
-  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-  if ((row?.user_version ?? 0) >= SCHEMA_VERSION) return;
-
-  await runInTransaction(db, async (tx) => {
-    await createSchema(tx);
-    if (options.seed !== false) await seed(tx);
-    await tx.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION};`);
-  });
-}
-
 export function quoteIdent(name: string) {
   return `"${name.replace(/"/g, '""')}"`;
-}
-
-/** Drops every user table and view (including ones created in the SQL editor) and re-seeds. */
-export async function resetDatabase(db: SQLiteDatabase) {
-  const objects = await db.getAllAsync<{ type: string; name: string }>(
-    "SELECT type, name FROM sqlite_master WHERE type IN ('view', 'table') AND name NOT LIKE 'sqlite_%' ORDER BY type DESC"
-  );
-  await db.execAsync('PRAGMA foreign_keys = OFF;');
-  try {
-    for (const { type, name } of objects) {
-      await db.execAsync(`DROP ${type === 'view' ? 'VIEW' : 'TABLE'} IF EXISTS ${quoteIdent(name)};`);
-    }
-    await db.execAsync('PRAGMA user_version = 0;');
-  } finally {
-    await db.execAsync('PRAGMA foreign_keys = ON;');
-  }
-  await migrate(db);
 }

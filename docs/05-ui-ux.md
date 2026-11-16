@@ -124,4 +124,4 @@ Tapping a tile opens the filtered list (e.g. low-stock medicines).
 | Language | Mongolian (default) and English, switchable at any time; stored data is never translated |
 | Theme | Light and dark; follows the device until the user chooses, then the choice is remembered |
 | Navigation | Bottom tabs on phones, a side rail from 900 px wide; one icon family (Ionicons outline) |
-| Motion | No decorative animation; sheets appear without sliding when the device asks to reduce motion |
+| Motion | Purposeful and quick (140–320 ms): motion shows where something came from or went — sheets rise and can be dragged closed, highlights slide to the chosen tab, list rows and dashboard figures arrive in sequence, presses get a small spring. Nothing loops except loading skeletons. With *reduce motion* on, only short fades remain. All timings live in `src/components/motion.tsx` |

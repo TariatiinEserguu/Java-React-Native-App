@@ -1,14 +1,11 @@
-import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { DataTable } from '../../components/DataTable';
-import { confirmAction, useToast } from '../../components/feedback';
 import { Badge, Button, Card, EmptyState, ErrorBanner, focusRing, LoadingState, SectionTitle, type PressState } from '../../components/ui';
-import { useDataChange, useDbQuery } from '../../db/DataContext';
-import { friendlyError } from '../../db/errors';
-import { quoteIdent, resetDatabase } from '../../db/schema';
-import { describeTable, listTables, readTablePage } from '../../db/sqlRunner';
+import { useDbQuery } from '../../db/DataContext';
+import { quoteIdent } from '../../db/schema';
+import { describeTable, listTables, listTriggers, readTablePage } from '../../db/sqlRunner';
 import { useI18n } from '../../i18n';
 import { makeStyles, monoFont, radius, useTheme } from '../../theme';
 
@@ -18,12 +15,8 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
   const { t, tn } = useI18n();
   const { colors } = useTheme();
   const styles = useStyles();
-  const db = useSQLiteContext();
-  const { notifyChange } = useDataChange();
-  const toast = useToast();
   const [chosen, setSelected] = useState<string | null>('medicines');
   const [chosenPage, setPage] = useState(0);
-  const [resetting, setResetting] = useState(false);
 
   const { data: tables, error } = useDbQuery(listTables);
   // Keep the selection valid when tables are dropped or rows deleted elsewhere.
@@ -32,7 +25,10 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
   const pageCount = Math.max(1, Math.ceil((table?.rowCount ?? 0) / PAGE_SIZE));
   const page = Math.min(chosenPage, pageCount - 1);
 
-  const { data: details } = useDbQuery((db) => (selected ? describeTable(db, selected) : Promise.resolve(null)), [selected]);
+  const { data: details } = useDbQuery(
+    async (db) => (selected ? { ...(await describeTable(db, selected)), triggers: await listTriggers(db, selected) } : null),
+    [selected]
+  );
   const { data: records, error: recordsError } = useDbQuery(
     (db) => (selected ? readTablePage(db, selected, PAGE_SIZE, page * PAGE_SIZE) : Promise.resolve(null)),
     [selected, page]
@@ -41,21 +37,6 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
   const select = (name: string) => {
     setSelected(name);
     setPage(0);
-  };
-
-  const reset = async () => {
-    const ok = await confirmAction(t('sql.resetTitle'), t('sql.resetBody'), t('sql.reset'));
-    if (!ok) return;
-    setResetting(true);
-    try {
-      await resetDatabase(db);
-      notifyChange();
-      toast(t('sql.resetDone'));
-    } catch (e) {
-      toast(friendlyError(e), 'error');
-    } finally {
-      setResetting(false);
-    }
   };
 
   return (
@@ -107,6 +88,38 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
             </Card>
           ) : null}
 
+          {details?.indexes.length ? (
+            <>
+              <SectionTitle>{t('sql.indexes')}</SectionTitle>
+              <View style={styles.fkList}>
+                {details.indexes.map((ix) => (
+                  <View key={ix.name} style={styles.objectChip}>
+                    <Text style={styles.objectName}>{ix.name}</Text>
+                    {ix.unique ? <Badge label={t('sql.unique')} tone="primary" /> : null}
+                    {ix.partial ? <Badge label={t('sql.partial')} tone="info" /> : null}
+                    {ix.origin !== 'c' ? <Badge label={t('sql.autoIndex')} /> : null}
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {details?.triggers.length ? (
+            <>
+              <SectionTitle>{t('sql.triggers')}</SectionTitle>
+              <View style={{ gap: 8 }}>
+                {details.triggers.map((tr) => (
+                  <Card key={tr.name} style={styles.ddl}>
+                    <Text style={[styles.ddlText, { fontWeight: '700', marginBottom: 4 }]}>{tr.name}</Text>
+                    <Text style={styles.ddlText} numberOfLines={8}>
+                      {tr.sql}
+                    </Text>
+                  </Card>
+                ))}
+              </View>
+            </>
+          ) : null}
+
           <SectionTitle>{t('sql.records')}</SectionTitle>
           {recordsError ? <ErrorBanner message={recordsError} /> : null}
           {records ? <DataTable columns={records.columns} rows={records.rows} /> : null}
@@ -119,15 +132,6 @@ export function TableBrowser({ onOpenInEditor }: { onOpenInEditor: (sql: string)
           </View>
         </>
       ) : null}
-
-      <SectionTitle>{t('sql.maintenance')}</SectionTitle>
-      <Card style={styles.danger}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.dangerTitle}>{t('sql.resetHeading')}</Text>
-          <Text style={styles.tableMeta}>{t('sql.resetHint')}</Text>
-        </View>
-        <Button title={t('sql.reset')} variant="danger" onPress={reset} loading={resetting} />
-      </Card>
     </View>
   );
 }
@@ -151,6 +155,6 @@ const useStyles = makeStyles((colors) => ({
   ddlText: { fontFamily: monoFont, fontSize: 12, color: colors.codeText },
   pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   pageText: { fontSize: 13, color: colors.muted },
-  danger: { flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: colors.danger },
-  dangerTitle: { fontWeight: '600', color: colors.text },
+  objectChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  objectName: { fontFamily: monoFont, fontSize: 12, color: colors.text },
 }));

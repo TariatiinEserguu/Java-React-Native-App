@@ -104,8 +104,8 @@ export function InventoryScreen() {
           </ScrollView>
           {!batches && !error ? <LoadingState /> : null}
           {batches?.length === 0 ? <EmptyState icon="cube-outline" text={t('inventory.empty')} hint={t('inventory.emptyHint')} /> : null}
-          {batches?.map((b) => (
-            <ListItem key={b.batch_id} onPress={() => setSelected(b.batch_id)}>
+          {batches?.map((b, i) => (
+            <ListItem index={i} key={b.batch_id} onPress={() => setSelected(b.batch_id)}>
               <View style={styles.top}>
                 <Text style={styles.name}>{medicineLabel(b)}</Text>
                 <View style={{ flex: 1 }} />

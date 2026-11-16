@@ -13,6 +13,18 @@ export function money(value: number) {
   return `${formatNumber(Math.round(value))}₮`;
 }
 
+/** File sizes: 1536 → "1.5 KB". */
+export function formatBytes(bytes: number) {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${formatNumber(unit === 0 ? value : Math.round(value * 10) / 10)} ${units[unit]}`;
+}
+
 /** The database stores local times as "YYYY-MM-DD HH:MM:SS" and dates as "YYYY-MM-DD". */
 function parseSqliteDate(value: string) {
   const [y, m, d] = value.slice(0, 10).split('-').map(Number);

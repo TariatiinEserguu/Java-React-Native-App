@@ -57,8 +57,8 @@ export function OrdersScreen() {
       {error ? <ErrorBanner message={error} /> : null}
       {!orders && !error ? <LoadingState /> : null}
       {orders?.length === 0 ? <EmptyState icon="receipt-outline" text={t('orders.empty')} hint={t('orders.emptyHint')} /> : null}
-      {orders?.map((o) => (
-        <ListItem key={o.order_id} onPress={() => setSelected(o.order_id)}>
+      {orders?.map((o, i) => (
+        <ListItem index={i} key={o.order_id} onPress={() => setSelected(o.order_id)}>
           <View style={styles.top}>
             <Text style={styles.name}>{o.order_number}</Text>
             <View style={{ flex: 1 }} />
