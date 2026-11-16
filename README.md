@@ -4,6 +4,8 @@ A mobile pharmacy management prototype for Android and iOS. It runs fully **offl
 local **SQLite** database on the phone: medicine catalogue, batch inventory with expiry dates, customers,
 prescriptions, sales, refunds and an append-only stock ledger.
 
+🌐 **Live web demo:** https://java-react-native-app.vercel.app (data is stored in your browser only)
+
 📄 **Design documents** (ERD, data dictionary, UML diagrams, UI, business rules, reports, tests): [`docs/`](docs/README.md)
 
 > Prototype: no server, no cloud sync. Each device has its own database (`pharmacare.db` in the app's private
@@ -30,6 +32,12 @@ With Expo Go on a phone, scan the QR code shown by `npx expo start` (phone and c
 | Administrator | `admin` | `admin123` |
 | Pharmacist | `pharmacist` | `pharm123` |
 | Cashier | `cashier` | `cashier123` |
+
+## Deploy the web version (Vercel)
+
+`vercel.json` builds the web app with `expo export --platform web` and serves `dist/` with the cross-origin isolation
+headers that SQLite in the browser needs. The project is not connected to GitHub, so pushes don't redeploy; run
+`npx vercel deploy --prod` from the repo root.
 
 ## Checks
 

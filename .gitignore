@@ -74,3 +74,6 @@ coverage/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Vercel project link (created by `vercel link`)
+.vercel
