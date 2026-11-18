@@ -1,31 +1,42 @@
 # PharmaCare — offline pharmacy app (Expo + SQLite)
 
-A mobile pharmacy management prototype for Android and iOS. It runs fully **offline** and stores everything in a
-local **SQLite** database on the phone: medicine catalogue, batch inventory with expiry dates, customers,
+A pharmacy management app for Android, iOS, and web. It runs fully **offline** and stores everything in a
+local **SQLite** database: medicine catalogue, batch inventory with expiry dates, customers,
 prescriptions, sales, refunds and an append-only stock ledger.
 
 🌐 **Live web demo:** https://java-react-native-app.vercel.app (data is stored in your browser only)
 
 📄 **Design documents** (ERD, data dictionary, UML diagrams, UI, business rules, reports, tests): [`docs/`](docs/README.md)
 
-> Prototype: no server, no cloud sync. Each device has its own database (`pharmacare.db` in the app's private
-> storage, or the browser's storage on web). Before real pharmacy use, the dispensing workflow must follow local law.
+Each device or browser profile stores its own database. Configure the pharmacy's dispensing workflow for the laws
+and operating procedures that apply to it.
 
 ## Requirements
 
-- Node.js 22+ and npm
+- Node.js 24.3 or later in the 24.x release line (recommended), or Node.js 22.13 or later in the 22.x release line, and npm
 - An Android phone with **Expo Go**, an Android emulator, an iOS simulator (macOS), or a desktop browser
 
 ## Run it
 
 ```bash
-npm install
+npm ci
 npx expo start          # then press a = Android, i = iOS, w = web
 ```
 
 With Expo Go on a phone, scan the QR code shown by `npx expo start` (phone and computer on the same network).
 
-### Demo accounts
+On a new installation, create the first administrator from the sign-in screen. Under **More → Settings**, enter the
+pharmacy details. Create a category under **More → Categories**, then add medicines and receive stock.
+Use **More → Staff accounts** to create sign-ins for pharmacists and cashiers.
+
+Existing installations retain their records and accounts. If an earlier release created sample accounts on a device
+you plan to use for pharmacy work, change the administrator password and change or deactivate the other sample
+accounts in **More → Staff accounts** before entering real records.
+
+### Optional sample workspace
+
+Set `EXPO_PUBLIC_DEMO_MODE=1` when starting Expo, for example `EXPO_PUBLIC_DEMO_MODE=1 npm run web`.
+This opens a separate database named `pharmacare-demo.db` with sample staff, products, stock and sales.
 
 | Role | Username | Password |
 | --- | --- | --- |
@@ -42,7 +53,7 @@ headers that SQLite in the browser needs. The project is not connected to GitHub
 ## Checks
 
 ```bash
-npm test             # 48 tests: backend rules, migrations and database tools (on Node's built-in SQLite) and translations
+npm test             # Backend rules, first-run setup, migrations, database tools and translations
 npm run typecheck    # TypeScript (app + tests)
 npm run lint         # ESLint (expo lint)
 ```

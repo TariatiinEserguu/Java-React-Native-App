@@ -17,6 +17,7 @@ import {
   EmptyState,
   ErrorBanner,
   Field,
+  Icon,
   LoadingState,
   KeyValue,
   ListGroup,
@@ -37,7 +38,7 @@ import { can } from '../services/permissions';
 import { getSettings } from '../services/settings';
 import { useUser } from '../session';
 import { makeStyles, useTheme } from '../theme';
-import { useIntent, type Intent } from './navigation';
+import { useIntent, type Intent, type Navigate } from './navigation';
 
 const FILTERS: [MedicineFilter, TranslationKey][] = [
   ['all', 'medicines.filter.all'],
@@ -62,7 +63,7 @@ const emptyForm = (minStock: number): Form => ({
   requires_prescription: false,
 });
 
-export function MedicinesScreen({ intent }: { intent?: Intent | null }) {
+export function MedicinesScreen({ intent, onNavigate }: { intent?: Intent | null; onNavigate: Navigate }) {
   const { t, tn } = useI18n();
   const { colors } = useTheme();
   const styles = useStyles();
@@ -72,6 +73,7 @@ export function MedicinesScreen({ intent }: { intent?: Intent | null }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<MedicineFilter>('all');
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [tableLayout, setTableLayout] = useState(false);
   // From Today's "Low or out of stock": open the catalogue on that filter.
   useIntent(intent, (value) => {
     if (value === 'low') {
@@ -81,7 +83,10 @@ export function MedicinesScreen({ intent }: { intent?: Intent | null }) {
     }
   });
   const { data: medicines, error } = useDbQuery((db) => listMedicines(db, { search, filter, categoryId }), [search, filter, categoryId]);
-  const { data: categories } = useDbQuery((db) => listCategories(db));
+  const { data: categories, error: categoryError } = useDbQuery((db) => listCategories(db));
+  const noCategories = canEdit && categories?.length === 0;
+  const filtered = !!search.trim() || filter !== 'all' || categoryId !== null;
+  const emptyHint = filtered ? 'medicines.emptyHint' : noCategories ? 'medicines.categoryRequired' : canEdit ? 'medicines.addFirst' : undefined;
 
   const [editing, setEditing] = useState<Medicine | 'new' | null>(null);
   const [form, setForm] = useState<Form>(emptyForm(10));
@@ -131,59 +136,97 @@ export function MedicinesScreen({ intent }: { intent?: Intent | null }) {
       <ScreenHeader
         title={t('medicines.title')}
         subtitle={medicines ? tn('count.shown', medicines.length) : undefined}
-        action={canEdit ? <Button title={t('common.add')} icon="add" onPress={openNew} /> : undefined}
+        action={
+          noCategories ? (
+            can(user, 'categories.write') ? (
+              <Button title={t('more.categories')} icon="pricetags-outline" onPress={() => onNavigate('more', 'categories')} />
+            ) : undefined
+          ) : canEdit ? <Button title={t('medicines.add')} icon="add" onPress={openNew} disabled={!categories} /> : undefined
+        }
       />
-      <SearchBar value={search} onChangeText={setSearch} placeholder={t('medicines.search')} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {FILTERS.map(([key, label]) => (
-          <Chip key={key} label={t(label)} active={filter === key} onPress={() => setFilter(key)} />
-        ))}
-      </ScrollView>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        <Chip label={t('medicines.allCategories')} active={categoryId === null} onPress={() => setCategoryId(null)} />
-        {categories?.map((c) => (
-          <Chip key={c.category_id} label={c.category_name} active={categoryId === c.category_id} onPress={() => setCategoryId(c.category_id)} />
-        ))}
-      </ScrollView>
-      {error ? <ErrorBanner message={error} /> : null}
-      {!medicines && !error ? <LoadingState /> : null}
-      {medicines?.length === 0 ? <EmptyState icon="search-outline" text={t('medicines.empty')} hint={t('medicines.emptyHint')} /> : null}
-
-      {medicines?.length ? (
+      <View onLayout={({ nativeEvent }) => setTableLayout(nativeEvent.layout.width >= 680)}>
         <ListGroup>
-          {medicines.map((m, i) => (
-            <ListItem index={i} key={m.medicine_id} onPress={() => setDetail(m)}>
+          <View style={styles.toolbar}>
+            <View style={[styles.filterFields, tableLayout && styles.filterFieldsWide]}>
+              <View style={tableLayout && styles.searchField}>
+                <SearchBar value={search} onChangeText={setSearch} placeholder={t('medicines.search')} />
+              </View>
+              {categories?.length ? (
+                <View style={tableLayout && styles.categoryFilter}>
+                  <SelectField
+                    label={t('field.category')}
+                    value={categoryId}
+                    onChange={setCategoryId}
+                    options={[
+                      { value: null, label: t('medicines.allCategories') },
+                      ...categories.map((c) => ({ value: c.category_id, label: c.category_name })),
+                    ]}
+                  />
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.chips}>
+              {FILTERS.map(([key, label]) => (
+                <Chip key={key} label={t(label)} active={filter === key} onPress={() => setFilter(key)} />
+              ))}
+            </View>
+          </View>
+          {error || categoryError ? <View style={styles.status}><ErrorBanner message={error ?? categoryError ?? ''} /></View> : null}
+          {!medicines && !error ? <View style={styles.status}><LoadingState /></View> : null}
+          {medicines?.length === 0 ? (
+            <EmptyState
+              icon={filtered ? 'search-outline' : 'medkit-outline'}
+              text={t(filtered ? 'medicines.empty' : 'medicines.noActive')}
+              hint={emptyHint ? t(emptyHint) : undefined}
+            />
+          ) : null}
+          {tableLayout && !!medicines?.length ? (
+            <View style={[styles.row, styles.tableHeading]}>
+              <Text style={[styles.columnHeading, styles.medicineCell]}>{t('field.medicine')}</Text>
+              <Text style={[styles.columnHeading, styles.categoryCell]}>{t('field.category')}</Text>
+              <Text style={[styles.columnHeading, styles.stockCell]}>{t('medicine.sellableStock')}</Text>
+              <Text style={[styles.columnHeading, styles.priceCell, styles.alignRight]}>{t('field.sellingPrice')}</Text>
+              <View style={styles.chevronCell} />
+            </View>
+          ) : null}
+          {medicines?.map((m, i) => (
+            <ListItem index={i} key={m.medicine_id} onPress={() => setDetail(m)} style={styles.listItem}>
               <View style={styles.row}>
-                <FormGlyph form={m.dosage_form} rx={!!m.requires_prescription} />
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <View style={styles.top}>
-                    <Text style={styles.name} numberOfLines={1}>
-                      {medicineLabel(m)}
-                    </Text>
-                    {m.requires_prescription ? <Badge label={t('medicine.rx')} tone="rx" /> : null}
-                  </View>
-                  <Text style={styles.muted} numberOfLines={1}>
-                    {m.generic_name}, {t(`dosage.${m.dosage_form as DosageForm}`).toLowerCase()}, {m.unit}
-                  </Text>
-                </View>
-                <View style={styles.right}>
-                  <Text style={styles.price}>{money(m.selling_price)}</Text>
-                  {m.is_active ? (
-                    <View style={styles.stock}>
-                      <Text style={[styles.stockText, m.stock_state !== 'OK' && { color: m.stock_state === 'OUT' ? colors.danger : colors.warning, fontWeight: '600' }]}>
-                        {m.stock_state === 'OUT' ? t('stock.OUT') : t('stock.inStock', { count: m.sellable_stock })}
+                <View style={[styles.row, styles.medicineCell]}>
+                  <FormGlyph form={m.dosage_form} size={tableLayout ? 40 : 34} rx={!!m.requires_prescription} />
+                  <View style={styles.medicineCell}>
+                    <View style={styles.top}>
+                      <Text style={styles.name} numberOfLines={tableLayout ? 1 : 2}>
+                        {medicineLabel(m)}
                       </Text>
-                      <StockMeter stock={m.sellable_stock} min={m.min_stock_level} state={m.stock_state} />
+                      {m.requires_prescription ? <Badge label={t('medicine.rx')} tone="rx" /> : null}
                     </View>
-                  ) : (
-                    <Badge label={t('common.inactive')} />
-                  )}
+                    <Text style={styles.muted} numberOfLines={1}>
+                      {m.generic_name} · {t(`dosage.${m.dosage_form as DosageForm}`)} · {m.unit}
+                    </Text>
+                  </View>
                 </View>
+                {tableLayout ? <Text numberOfLines={1} style={[styles.muted, styles.categoryCell]}>{m.category_name}</Text> : null}
+                <View style={tableLayout ? [styles.row, styles.tableNumbers] : styles.right}>
+                  {!tableLayout ? <Text style={styles.price}>{money(m.selling_price)}</Text> : null}
+                  <View style={[styles.stock, tableLayout ? styles.stockCell : styles.right]}>
+                    {m.is_active ? (
+                      <>
+                        <Text style={[styles.stockText, m.stock_state !== 'OK' && { color: m.stock_state === 'OUT' ? colors.danger : colors.warning, fontWeight: '600' }]}>
+                          {m.stock_state === 'OUT' ? t('stock.OUT') : t('stock.inStock', { count: m.sellable_stock })}
+                        </Text>
+                        <StockMeter stock={m.sellable_stock} min={m.min_stock_level} state={m.stock_state} />
+                      </>
+                    ) : <Badge label={t('common.inactive')} />}
+                  </View>
+                  {tableLayout ? <Text style={[styles.price, styles.priceCell, styles.alignRight]}>{money(m.selling_price)}</Text> : null}
+                </View>
+                <View style={styles.chevronCell}><Icon name="chevron-forward" size={16} /></View>
               </View>
             </ListItem>
           ))}
         </ListGroup>
-      ) : null}
+      </View>
 
       <MedicineDetail
         medicine={detail}
@@ -308,15 +351,30 @@ function MedicineDetail({
 }
 
 const useStyles = makeStyles((colors) => ({
-  chips: { gap: 8, paddingBottom: 10 },
+  toolbar: { padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  filterFields: { gap: 0 },
+  filterFieldsWide: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
+  searchField: { flex: 1, minWidth: 0 },
+  categoryFilter: { width: '34%', maxWidth: 240 },
+  chips: { gap: 6, flexDirection: 'row', flexWrap: 'wrap' },
+  status: { padding: 16 },
+  tableHeading: { backgroundColor: colors.surfaceAlt, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 11, paddingHorizontal: 16 },
+  columnHeading: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  listItem: { paddingVertical: 12, paddingHorizontal: 16 },
+  medicineCell: { flex: 1, minWidth: 0 },
+  categoryCell: { flex: 0.5, minWidth: 90 },
+  stockCell: { width: 124 },
+  priceCell: { width: 96 },
+  chevronCell: { width: 16, flexShrink: 0 },
+  alignRight: { textAlign: 'right' },
+  tableNumbers: { flexShrink: 0 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  bottom: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
   name: { fontSize: 15, fontWeight: '600', color: colors.text, flexShrink: 1 },
-  price: { fontSize: 15, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
+  price: { fontSize: 14, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
   muted: { fontSize: 13, color: colors.muted, flexShrink: 1 },
   pair: { flexDirection: 'row', gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  right: { alignItems: 'flex-end', gap: 4 },
-  stock: { alignItems: 'flex-end', gap: 4 },
+  right: { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
+  stock: { gap: 4 },
   stockText: { fontSize: 12, color: colors.muted },
 }));

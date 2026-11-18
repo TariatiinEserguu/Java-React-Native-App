@@ -7,6 +7,7 @@ import {
   Pressable,
   Switch,
   TextInput,
+  useWindowDimensions,
   View,
   type PressableProps,
   type PressableStateCallbackType,
@@ -227,10 +228,11 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
 
 export function ScreenHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   const styles = useStyles();
+  const { width } = useWindowDimensions();
   return (
     <View style={styles.header}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text accessibilityRole="header" style={styles.title}>
+        <Text accessibilityRole="header" style={[styles.title, width >= 700 && styles.titleWide]}>
           {title}
         </Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -256,34 +258,39 @@ export function Field({
   label,
   error,
   hint,
+  trailing,
   ...input
-}: TextInputProps & { label: string; error?: string; hint?: string }) {
+}: TextInputProps & { label: string; error?: string; hint?: string; trailing?: ReactNode }) {
   const { colors } = useTheme();
   const styles = useStyles();
   const [focused, setFocused] = useState(false);
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
-        placeholderTextColor={colors.muted}
-        accessibilityLabel={label}
-        {...input}
-        onFocus={(e) => {
-          setFocused(true);
-          input.onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          input.onBlur?.(e);
-        }}
-        style={[
-          styles.input,
-          focused && styles.inputFocused,
-          error ? { borderColor: colors.danger } : null,
-          input.editable === false && { backgroundColor: colors.disabledBg, color: colors.disabledText },
-          input.style,
-        ]}
-      />
+      <View>
+        <TextInput
+          placeholderTextColor={colors.muted}
+          accessibilityLabel={label}
+          {...input}
+          onFocus={(e) => {
+            setFocused(true);
+            input.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            input.onBlur?.(e);
+          }}
+          style={[
+            styles.input,
+            focused && styles.inputFocused,
+            error ? { borderColor: colors.danger } : null,
+            input.editable === false && { backgroundColor: colors.disabledBg, color: colors.disabledText },
+            trailing ? styles.inputWithTrailing : null,
+            input.style,
+          ]}
+        />
+        {trailing ? <View style={styles.fieldTrailing}>{trailing}</View> : null}
+      </View>
       {error ? (
         <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.errorText}>
           {error}
@@ -354,7 +361,8 @@ export function Chip({ label, active, onPress }: { label: string; active?: boole
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityState={{ selected: !!active }}
+      accessibilityState={active === undefined ? undefined : { selected: active }}
+      {...(Platform.OS === 'web' && { 'aria-pressed': active })}
       onPress={onPress}
       pressScale={0.94}
       style={(state: PressState) => [
@@ -636,7 +644,7 @@ export function KeyValue({ label, value, strong }: { label: string; value: React
 
 /** Content container for every tab's top-level ScrollView. */
 export const screen = {
-  content: { padding: space.lg, paddingBottom: 32, width: '100%', maxWidth: 960, alignSelf: 'center' },
+  content: { paddingHorizontal: space.lg, paddingTop: 24, paddingBottom: 36, width: '100%', maxWidth: 1440, alignSelf: 'center' },
 } as const satisfies Record<string, ViewStyle>;
 
 export const useStyles = makeStyles((colors) => ({
@@ -661,11 +669,12 @@ export const useStyles = makeStyles((colors) => ({
     borderColor: colors.border,
     padding: 16,
   },
-  header: { flexDirection: 'row', alignItems: 'flex-end', gap: space.md, marginBottom: space.lg },
-  title: { fontSize: fontSize.title, fontWeight: '600', color: colors.text, letterSpacing: -0.3, lineHeight: 30 },
-  subtitle: { fontSize: fontSize.small, color: colors.muted, marginTop: 2 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.xl },
+  title: { fontSize: 27, fontWeight: '700', color: colors.text, letterSpacing: -0.7, lineHeight: 32 },
+  titleWide: { fontSize: 34, lineHeight: 40, letterSpacing: -1 },
+  subtitle: { fontSize: fontSize.small, color: colors.muted, marginTop: 4, lineHeight: 19 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 26, marginBottom: space.sm, minHeight: 28 },
-  sectionTitle: { fontSize: fontSize.body, fontWeight: '600', color: colors.text, flexShrink: 1 },
+  sectionTitle: { fontSize: 17, fontWeight: '600', color: colors.text, flexShrink: 1 },
   field: { marginBottom: space.md },
   label: { fontSize: fontSize.small, fontWeight: '600', color: colors.text, marginBottom: 6 },
   input: {
@@ -681,6 +690,8 @@ export const useStyles = makeStyles((colors) => ({
     minHeight: 44,
   },
   inputError: { borderColor: colors.danger },
+  inputWithTrailing: { paddingRight: 54 },
+  fieldTrailing: { position: 'absolute', right: 6, top: 0, bottom: 0, justifyContent: 'center' },
   inputFocused: { borderColor: colors.primary, ...(Platform.OS === 'web' ? ({ boxShadow: `0 0 0 3px ${colors.primarySoft}` } as object) : null) },
   errorText: { color: colors.danger, fontSize: fontSize.caption, marginTop: 4 },
   hint: { color: colors.muted, fontSize: fontSize.caption, marginTop: 4 },
@@ -698,7 +709,7 @@ export const useStyles = makeStyles((colors) => ({
     minHeight: 44,
   },
   searchInput: { flex: 1, fontSize: fontSize.body, fontFamily: fonts.regular, color: colors.text, paddingVertical: 10, minWidth: 0, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null) },
-  badge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 5, alignSelf: 'flex-start', flexShrink: 1 },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, alignSelf: 'flex-start', flexShrink: 1 },
   badgeText: { fontSize: fontSize.caption, fontWeight: '600' },
   chip: {
     paddingHorizontal: 12,

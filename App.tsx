@@ -6,8 +6,8 @@ import { IBMPlexSans_700Bold } from '@expo-google-fonts/ibm-plex-sans/700Bold';
 import { loadAsync } from 'expo-font';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import { Animated, StyleSheet, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
+import { Component, Suspense, useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { ActivityIndicator, Animated, Platform, StyleSheet, useWindowDimensions, View, type LayoutChangeEvent } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from './src/components/Text';
@@ -15,10 +15,9 @@ import { PharmacyCross } from './src/components/brand';
 import { LanguageSwitch, ThemeToggle } from './src/components/PreferenceControls';
 import { ToastProvider } from './src/components/feedback';
 import { duration, timing, useAnimatedNumber, useIndicator, usePop, useReducedMotion } from './src/components/motion';
-import { focusRing, Icon, PressableScale, type IconName, type PressState } from './src/components/ui';
+import { focusRing, Icon, IconButton, PressableScale, type IconName, type PressState } from './src/components/ui';
 import { DataProvider, ScreenActivity } from './src/db/DataContext';
-import { initDatabase } from './src/db/open';
-import { DATABASE_NAME } from './src/db/schema';
+import { activeDatabaseName, initDatabase } from './src/db/open';
 import { I18nProvider, useI18n, type TranslationKey } from './src/i18n';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { InventoryScreen } from './src/screens/InventoryScreen';
@@ -34,7 +33,7 @@ import { makeStyles, ThemeProvider, transition, useTheme } from './src/theme';
 type TabScreen = ComponentType<{ onNavigate: Navigate; intent?: Intent | null }>;
 
 const TABS: { key: string; label: TranslationKey; icon: IconName; iconActive: IconName; Screen: TabScreen }[] = [
-  { key: 'dashboard', label: 'nav.dashboard', icon: 'speedometer-outline', iconActive: 'speedometer', Screen: DashboardScreen },
+  { key: 'dashboard', label: 'nav.dashboard', icon: 'grid-outline', iconActive: 'grid', Screen: DashboardScreen },
   { key: 'medicines', label: 'nav.medicines', icon: 'medkit-outline', iconActive: 'medkit', Screen: MedicinesScreen },
   { key: 'sell', label: 'nav.sell', icon: 'cart-outline', iconActive: 'cart', Screen: SellScreen },
   { key: 'inventory', label: 'nav.inventory', icon: 'cube-outline', iconActive: 'cube', Screen: InventoryScreen },
@@ -49,26 +48,53 @@ export default function App() {
     <I18nProvider>
       <ThemeProvider>
         <SafeAreaProvider>
-          <SQLiteProvider databaseName={DATABASE_NAME} onInit={initDatabase} onError={(e) => console.error('Database failed to open', e)}>
-            <DataProvider>
-              <ToastProvider>
-                <SessionProvider>
-                  <FontGate>
-                    <Root />
-                  </FontGate>
-                </SessionProvider>
-              </ToastProvider>
-            </DataProvider>
-          </SQLiteProvider>
+          <StartupBoundary>
+            <Suspense fallback={<StartupStatus />}>
+              <SQLiteProvider databaseName={activeDatabaseName} onInit={initDatabase} useSuspense>
+                <DataProvider>
+                  <ToastProvider>
+                    <SessionProvider>
+                      <FontGate>
+                        <Root />
+                      </FontGate>
+                    </SessionProvider>
+                  </ToastProvider>
+                </DataProvider>
+              </SQLiteProvider>
+            </Suspense>
+          </StartupBoundary>
         </SafeAreaProvider>
       </ThemeProvider>
     </I18nProvider>
   );
 }
 
+class StartupBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? <StartupStatus failed /> : this.props.children;
+  }
+}
+
+function StartupStatus({ failed = false }: { failed?: boolean }) {
+  const { colors } = useTheme();
+  const { t } = useI18n();
+  const styles = useStyles();
+  return (
+    <View style={[styles.root, styles.startup]} accessibilityLiveRegion="polite">
+      <Brand />
+      {failed ? <Text style={styles.startupError}>{t('startup.error')}</Text> : <ActivityIndicator color={colors.primary} accessibilityLabel={t('common.loading')} />}
+    </View>
+  );
+}
+
 /** Holds the screen back for a moment until the icon font and the typeface are ready, so nothing pops in. */
 function FontGate({ children }: { children: React.ReactNode }) {
-  const { colors } = useTheme();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     // Only the four weights the app uses are bundled (imported per weight, not the whole family).
@@ -80,7 +106,7 @@ function FontGate({ children }: { children: React.ReactNode }) {
       () => setReady(true)
     );
   }, []);
-  return ready ? <>{children}</> : <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.bg }]} />;
+  return ready ? <>{children}</> : <StartupStatus />;
 }
 
 function Root() {
@@ -109,24 +135,28 @@ function Root() {
 function Shell() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { t } = useI18n();
-  const { user, touch } = useSession();
+  const { touch } = useSession();
   const styles = useStyles();
   const wide = width >= WIDE_BREAKPOINT;
   const [active, setActive] = useState(TABS[0].key);
   const [intent, setIntent] = useState<(Intent & { tab: string }) | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    window.addEventListener('keydown', touch);
+    return () => window.removeEventListener('keydown', touch);
+  }, [touch]);
+
   const navigate: Navigate = (tab, value) => {
     setActive(tab);
     if (value) setIntent({ tab, value, id: Date.now() });
   };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]} onTouchStart={touch} onPointerDown={touch}>
+    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: wide ? insets.bottom : 0, paddingLeft: insets.left, paddingRight: insets.right }]} onTouchStart={touch} onPointerDown={touch}>
       {wide ? null : (
         <View style={styles.appBar}>
           <Brand />
           <View style={{ flex: 1 }} />
-          {user && width >= 480 ? <Text style={styles.appBadge}>{roleLabel(user.role)}</Text> : null}
           <LanguageSwitch />
           <ThemeToggle />
         </View>
@@ -136,9 +166,9 @@ function Shell() {
         {wide ? <NavRail active={active} onSelect={setActive} /> : null}
 
         {/* Screens stay mounted (hidden when inactive) so search text and the cart persist across tabs. */}
-        <View style={{ flex: 1 }}>
+        <View style={styles.workspace}>
           {TABS.map(({ key, Screen }) => (
-            <TabPane key={key} active={key === active}>
+            <TabPane key={key} active={key === active} wide={wide}>
               <ScreenActivity active={key === active}>
                 <Screen onNavigate={navigate} intent={intent?.tab === key ? intent : null} />
               </ScreenActivity>
@@ -153,7 +183,7 @@ function Shell() {
 }
 
 /** A tab's screen. Coming into view it fades in and settles up from a few pixels below. */
-function TabPane({ active, children }: { active: boolean; children: ReactNode }) {
+function TabPane({ active, wide, children }: { active: boolean; wide: boolean; children: ReactNode }) {
   const styles = useStyles();
   const reduce = useReducedMotion();
   const shown = useAnimatedNumber(active ? 0 : 1);
@@ -168,6 +198,7 @@ function TabPane({ active, children }: { active: boolean; children: ReactNode })
     <Animated.View
       style={[
         StyleSheet.absoluteFill,
+        wide && styles.desktopPane,
         !active && styles.hidden,
         { opacity: shown, transform: reduce ? [] : [{ translateY: shown.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] },
       ]}
@@ -201,10 +232,13 @@ function BottomTabs({ active, onSelect, bottomInset }: { active: string; onSelec
 }
 
 function Brand() {
+  const { colors } = useTheme();
   const styles = useStyles();
   return (
-    <View style={styles.brand} accessibilityRole="header">
-      <PharmacyCross size={18} />
+    <View style={styles.brand}>
+      <View style={styles.brandMark}>
+        <PharmacyCross size={17} color={colors.onPrimary} />
+      </View>
       <Text style={styles.brandText}>PharmaCare</Text>
     </View>
   );
@@ -212,7 +246,7 @@ function Brand() {
 
 function NavRail({ active, onSelect }: { active: string; onSelect: (key: string) => void }) {
   const { t } = useI18n();
-  const { user } = useSession();
+  const { user, logout } = useSession();
   const styles = useStyles();
   const index = TABS.findIndex((tab) => tab.key === active);
   const { offset, target, onItemLayout } = useIndicator(index, 'y');
@@ -221,7 +255,7 @@ function NavRail({ active, onSelect }: { active: string; onSelect: (key: string)
       <View style={styles.railBrand}>
         <Brand />
       </View>
-      <View accessibilityRole="tablist" accessibilityLabel={t('nav.main')} style={{ gap: 2, flex: 1 }}>
+      <View accessibilityRole="tablist" accessibilityLabel={t('nav.main')} style={styles.railMenu}>
         {/* The highlight glides to the selected item. */}
         {target ? <Animated.View pointerEvents="none" style={[styles.railPill, { height: target.height, transform: [{ translateY: offset }] }]} /> : null}
         {TABS.map((tab, i) => (
@@ -229,6 +263,10 @@ function NavRail({ active, onSelect }: { active: string; onSelect: (key: string)
         ))}
       </View>
       <View style={styles.railFooter}>
+        <View style={styles.railPrefs}>
+          <LanguageSwitch />
+          <ThemeToggle />
+        </View>
         {user ? (
           <View style={styles.userRow}>
             <View style={styles.avatar}>
@@ -242,12 +280,9 @@ function NavRail({ active, onSelect }: { active: string; onSelect: (key: string)
                 {roleLabel(user.role)}
               </Text>
             </View>
+            <IconButton icon="log-out-outline" label={t('common.logout')} onPress={logout} />
           </View>
         ) : null}
-        <View style={styles.railPrefs}>
-          <LanguageSwitch />
-          <ThemeToggle />
-        </View>
       </View>
     </View>
   );
@@ -270,13 +305,14 @@ function TabButton({
   const { colors } = useTheme();
   const styles = useStyles();
   const rail = layout === 'rail';
-  const color = rail ? (focused ? colors.text : colors.muted) : focused ? colors.primary : colors.muted;
+  const color = focused ? colors.primary : colors.muted;
   // The icon of the newly selected tab gives a small pop.
   const pop = usePop(focused);
   return (
     <PressableScale
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
+      aria-selected={focused}
       accessibilityLabel={t(tab.label)}
       onPress={onPress}
       onLayout={onLayout}
@@ -300,30 +336,24 @@ function TabButton({
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.bg },
   body: { flex: 1, flexDirection: 'row' },
+  workspace: { flex: 1, minWidth: 0 },
+  desktopPane: { paddingHorizontal: 16, paddingTop: 6 },
+  startup: { alignItems: 'center', justifyContent: 'center', gap: 18, padding: 24 },
+  startupError: { color: colors.muted, fontSize: 15, textAlign: 'center' },
   appBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 6,
-    minHeight: 52,
+    minHeight: 62,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  brandMark: { width: 26, height: 26, borderRadius: 7, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  brandText: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.3 },
-  appBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.muted,
-    backgroundColor: colors.surfaceAlt,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  brandMark: { width: 36, height: 36, borderRadius: 11, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  brandText: { fontSize: 19, fontWeight: '700', color: colors.text, letterSpacing: -0.5 },
   hidden: { display: 'none' },
   tabBar: {
     flexDirection: 'row',
@@ -331,18 +361,20 @@ const useStyles = makeStyles((colors) => ({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: 6,
+    paddingHorizontal: 4,
   },
   tab: { flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4, minHeight: 48, borderRadius: 8 },
   tabPill: { position: 'absolute', width: PILL_WIDTH, height: 28, borderRadius: 14, backgroundColor: colors.primarySoft },
   tabLabel: { fontSize: 11, fontWeight: '500', maxWidth: '100%', paddingHorizontal: 2 },
-  rail: { width: 232, padding: 12, backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border },
-  railBrand: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 18 },
-  railItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, minHeight: 38, borderRadius: 8, ...transition },
-  railPill: { position: 'absolute', top: 0, left: 0, right: 0, borderRadius: 8, backgroundColor: colors.surfaceAlt },
+  rail: { width: 218, paddingHorizontal: 14, paddingVertical: 18, backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border },
+  railBrand: { paddingHorizontal: 6, paddingTop: 3, paddingBottom: 32 },
+  railMenu: { gap: 5, flex: 1 },
+  railItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, minHeight: 44, borderRadius: 10, ...transition },
+  railPill: { position: 'absolute', top: 0, left: 0, right: 0, borderRadius: 10, backgroundColor: colors.primarySoft },
   railLabel: { fontSize: 14, fontWeight: '500', flexShrink: 1 },
-  railFooter: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
-  userRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4 },
-  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  railFooter: { gap: 14 },
+  userRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 3, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border },
+  avatar: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
   userName: { fontSize: 13, fontWeight: '600', color: colors.text },
   userRole: { fontSize: 12, color: colors.muted },

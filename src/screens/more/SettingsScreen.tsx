@@ -11,7 +11,8 @@ import { useDataChange, useDbQuery } from '../../db/DataContext';
 import { friendlyError, integrityIssueText } from '../../db/errors';
 import { databaseCounts, integrityIssues } from '../../db/repository';
 import { SCHEMA_VERSION } from '../../db/migrations';
-import { BUSINESS_TABLES, DATABASE_NAME, DEFAULT_SETTINGS } from '../../db/schema';
+import { activeDatabaseName } from '../../db/open';
+import { BUSINESS_TABLES, DEFAULT_SETTINGS } from '../../db/schema';
 import { dateTime } from '../../format';
 import { useI18n, type TranslationKey } from '../../i18n';
 import { backupInfo, backupSupported, createBackup, restoreBackup } from '../../services/backup';
@@ -215,7 +216,7 @@ function About() {
     <>
       <SectionTitle>{t('about.title')}</SectionTitle>
       <Card>
-        <KeyValue label={t('about.file')} value={DATABASE_NAME} />
+        <KeyValue label={t('about.file')} value={activeDatabaseName} />
         <KeyValue label={t('about.schema')} value={String(SCHEMA_VERSION)} />
         {data
           ? BUSINESS_TABLES.map((table) => <KeyValue key={table} label={table} value={tn('count.rows', data.counts[table])} />)

@@ -16,6 +16,7 @@ import {
   EmptyState,
   ErrorBanner,
   Field,
+  Icon,
   KeyValue,
   ListGroup,
   ListItem,
@@ -28,14 +29,14 @@ import {
   type BadgeTone,
 } from '../components/ui';
 import { useDbQuery } from '../db/DataContext';
-import { getBatch, listBatches, listMedicines, listMovements, listSuppliers, type Batch, type BatchState, type BatchView } from '../db/repository';
+import { getBatch, listBatches, listMedicines, listMovements, listSuppliers, type Batch, type BatchState, type BatchView, type Medicine } from '../db/repository';
 import { daysLabel, dateTime, formatNumber, medicineLabel, money, shortDate, todayIso } from '../format';
 import { useI18n, type TranslationKey } from '../i18n';
 import { adjustStock, receiveBatch, setBatchActive, writeOffStock } from '../services/inventory';
 import { can } from '../services/permissions';
 import { useUser } from '../session';
 import { makeStyles, useTheme } from '../theme';
-import { useIntent, type Intent } from './navigation';
+import { useIntent, type Intent, type Navigate } from './navigation';
 
 const VIEWS: [BatchView, TranslationKey][] = [
   ['all', 'inventory.view.all'],
@@ -66,8 +67,8 @@ const emptyReceive = () => ({
   received_date: todayIso(),
 });
 
-export function InventoryScreen({ intent }: { intent?: Intent | null }) {
-  const { t } = useI18n();
+export function InventoryScreen({ intent, onNavigate }: { intent?: Intent | null; onNavigate: Navigate }) {
+  const { t, tn } = useI18n();
   const styles = useStyles();
   const { colors } = useTheme();
   const user = useUser();
@@ -75,114 +76,168 @@ export function InventoryScreen({ intent }: { intent?: Intent | null }) {
   const [view, setView] = useState<BatchView>('all');
   const [search, setSearch] = useState('');
   const [mode, setMode] = useState<'batches' | 'log'>('batches');
+  const [tableLayout, setTableLayout] = useState(false);
   const { data: batches, error } = useDbQuery((db) => listBatches(db, { search, view }), [search, view]);
-  const { data: log } = useDbQuery((db) => listMovements(db, { limit: 100 }), []);
+  const { data: log, error: logError } = useDbQuery((db) => listMovements(db, { limit: 100 }), []);
+  const { data: medicines, error: medicinesError } = useDbQuery((db) => listMedicines(db));
+  const needsMedicine = medicines?.length === 0;
+  const filtered = !!search.trim() || view !== 'all';
+  const emptyHint = filtered ? 'inventory.adjustFilters' : canReceive ? needsMedicine ? 'inventory.medicineRequired' : 'inventory.emptyHint' : undefined;
   const [selected, setSelected] = useState<number | null>(null);
   const [receiving, setReceiving] = useState(false);
   // From Today: "Expired batches" / "Expiring soon" open the matching view, "Receive stock" the form.
   useIntent(intent, (value) => {
     if (value === 'receive') {
+      setMode('batches');
       if (canReceive) setReceiving(true);
       return;
     }
     setMode('batches');
     setView(value === 'expired' ? 'expired' : value === 'near' ? 'near' : 'all');
+    setSearch('');
   });
+  const shown = mode === 'batches' ? batches?.length : log?.length;
 
   return (
     <ScrollView contentContainerStyle={screen.content} keyboardShouldPersistTaps="handled">
       <ScreenHeader
         title={t('inventory.title')}
-        action={canReceive ? <Button title={t('inventory.receive')} icon="add" onPress={() => setReceiving(true)} /> : undefined}
+        subtitle={shown === undefined ? undefined : tn('count.shown', shown)}
+        action={canReceive ? (
+          needsMedicine
+            ? <Button title={t('medicines.title')} icon="medkit-outline" onPress={() => onNavigate('medicines')} />
+            : <Button title={t('inventory.receiveTitle')} icon="add" onPress={() => setReceiving(true)} disabled={!medicines} />
+        ) : undefined}
       />
-      <Segmented
-        options={[
-          ['batches', t('inventory.tab.batches')],
-          ['log', t('inventory.tab.log')],
-        ]}
-        value={mode}
-        onChange={setMode}
-      />
-      {error ? <ErrorBanner message={error} /> : null}
-
-      {mode === 'batches' ? (
-        <>
-          <SearchBar value={search} onChangeText={setSearch} placeholder={t('inventory.search')} />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-            {VIEWS.map(([key, label]) => (
-              <Chip key={key} label={t(label)} active={view === key} onPress={() => setView(key)} />
-            ))}
-          </ScrollView>
-          {!batches && !error ? <LoadingState /> : null}
-          {batches?.length === 0 ? <EmptyState icon="cube-outline" text={t('inventory.empty')} hint={t('inventory.emptyHint')} /> : null}
-          {batches?.length ? (
-            <ListGroup>
-              {batches.map((b, i) => {
-                // Only a batch that needs action gets colour; a normal sellable batch stays plain.
+      <View onLayout={({ nativeEvent }) => setTableLayout(nativeEvent.layout.width >= 680)}>
+        <ListGroup>
+          <View style={styles.toolbar}>
+            <View style={tableLayout && styles.toolbarWide}>
+              <View style={tableLayout && styles.modeField}>
+                <Segmented
+                  options={[
+                    ['batches', t('inventory.tab.batches')],
+                    ['log', t('inventory.tab.log')],
+                  ]}
+                  value={mode}
+                  onChange={setMode}
+                />
+              </View>
+              {mode === 'batches' ? (
+                <View style={tableLayout && styles.searchField}>
+                  <SearchBar value={search} onChangeText={setSearch} placeholder={t('inventory.search')} />
+                </View>
+              ) : null}
+            </View>
+            {mode === 'batches' ? (
+              <View style={styles.chips}>
+                {VIEWS.map(([key, label]) => (
+                  <Chip key={key} label={t(label)} active={view === key} onPress={() => setView(key)} />
+                ))}
+              </View>
+            ) : null}
+          </View>
+          {mode === 'batches' ? (
+            <>
+              {error || (canReceive && medicinesError) ? <View style={styles.status}><ErrorBanner message={error ?? medicinesError ?? ''} /></View> : null}
+              {!batches && !error ? <View style={styles.status}><LoadingState /></View> : null}
+              {batches?.length === 0 ? (
+                <EmptyState
+                  icon="cube-outline"
+                  text={t('inventory.empty')}
+                  hint={emptyHint ? t(emptyHint) : undefined}
+                />
+              ) : null}
+              {tableLayout && !!batches?.length ? (
+                <View style={[styles.batchRow, styles.tableHeading]}>
+                  <Text style={[styles.columnHeading, styles.batchCell]}>{t('field.medicine')}</Text>
+                  <Text style={[styles.columnHeading, styles.stateCell]}>{t('batch.state')}</Text>
+                  <Text style={[styles.columnHeading, styles.expiryCell]}>{t('batch.expiry')}</Text>
+                  <Text style={[styles.columnHeading, styles.quantityCell]}>{t('batch.remainingReceived')}</Text>
+                  <View style={styles.chevronCell} />
+                </View>
+              ) : null}
+              {batches?.map((b, i) => {
                 const expiryColor = b.batch_state === 'EXPIRED' ? colors.danger : b.batch_state === 'NEAR_EXPIRY' ? colors.warning : colors.text;
+                const quantity = `${formatNumber(b.quantity_remaining)} / ${formatNumber(b.quantity_received)}`;
+                const status = <Badge label={t(`batch.${b.batch_state}`)} tone={b.batch_state === 'SELLABLE' ? 'neutral' : batchTone[b.batch_state]} />;
                 return (
-                  <ListItem index={i} key={b.batch_id} onPress={() => setSelected(b.batch_id)}>
+                  <ListItem index={i} key={b.batch_id} onPress={() => setSelected(b.batch_id)} style={styles.listItem}>
                     <View style={styles.batchRow}>
-                      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                        <View style={styles.top}>
-                          <Text style={styles.name} numberOfLines={1}>
-                            {medicineLabel(b)}
-                          </Text>
-                          {b.batch_state !== 'SELLABLE' ? <Badge label={t(`batch.${b.batch_state}`)} tone={batchTone[b.batch_state]} /> : null}
+                      <View style={[styles.batchRow, styles.batchCell]}>
+                        <View style={[styles.batchIcon, !tableLayout && styles.batchIconCompact]}>
+                          <Icon name="cube-outline" size={18} color={colors.primary} />
                         </View>
-                        <Text style={styles.muted} numberOfLines={1}>
-                          {t('medicine.lot', { batch: b.batch_number })}, {b.supplier_name ?? t('common.noSupplier')}
-                        </Text>
+                        <View style={styles.batchCell}>
+                          <Text style={styles.name} numberOfLines={tableLayout ? 1 : 2}>{medicineLabel(b)}</Text>
+                          <Text style={styles.muted} numberOfLines={1}>
+                            {t('medicine.lot', { batch: b.batch_number })} · {b.supplier_name ?? t('common.noSupplier')}
+                          </Text>
+                          {!tableLayout && b.batch_state !== 'SELLABLE' ? status : null}
+                        </View>
                       </View>
-                      <View style={styles.right}>
-                        <Text style={[styles.expiry, { color: expiryColor }]}>{shortDate(b.expiry_date)}</Text>
-                        <Text style={styles.muted}>
-                          {formatNumber(b.quantity_remaining)} / {formatNumber(b.quantity_received)}
-                        </Text>
+                      {tableLayout ? <View style={styles.stateCell}>{status}</View> : null}
+                      <View style={tableLayout ? styles.batchRow : styles.right}>
+                        <Text style={[styles.expiry, tableLayout && styles.expiryCell, { color: expiryColor }]}>{shortDate(b.expiry_date)}</Text>
+                        <Text style={[styles.quantity, tableLayout && styles.quantityCell]}>{quantity}</Text>
                       </View>
+                      <View style={styles.chevronCell}><Icon name="chevron-forward" size={16} /></View>
                     </View>
                   </ListItem>
                 );
               })}
-            </ListGroup>
-          ) : null}
-        </>
-      ) : (
-        <Card style={{ paddingVertical: 4, paddingHorizontal: 16 }}>
-          {!log ? <LoadingState /> : null}
-          {log?.length === 0 ? <EmptyState icon="swap-vertical-outline" text={t('inventory.noMovements')} /> : null}
-          {log?.map((m) => (
-            <View key={m.movement_id} style={styles.logRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>
-                  {m.brand_name} · {m.batch_number}
-                </Text>
-                <Text style={styles.muted}>
-                  {dateTime(m.movement_date)} · {m.user_name}
-                  {m.order_number ? ` · ${m.order_number}` : ''}
-                  {m.reason ? ` · ${m.reason}` : ''}
-                </Text>
-              </View>
-              <Badge label={`${t(`movement.${m.movement_type}`)} ${m.quantity_change > 0 ? '+' : ''}${m.quantity_change}`} tone={movementTone[m.movement_type]} />
-            </View>
-          ))}
-        </Card>
-      )}
+            </>
+          ) : (
+            <>
+              {logError ? <View style={styles.status}><ErrorBanner message={logError} /></View> : null}
+              {!log && !logError ? <View style={styles.status}><LoadingState /></View> : null}
+              {log?.length === 0 ? <EmptyState icon="swap-vertical-outline" text={t('inventory.noMovements')} /> : null}
+              {log?.map((m, i) => (
+                <ListItem key={m.movement_id} index={i} style={styles.listItem}>
+                  <View style={styles.batchRow}>
+                    <View style={[styles.batchIcon, !tableLayout && styles.batchIconCompact]}>
+                      <Icon name="swap-vertical-outline" size={18} color={colors.primary} />
+                    </View>
+                    <View style={styles.batchCell}>
+                      <Text style={styles.name}>{m.brand_name} · {m.batch_number}</Text>
+                      <Text style={styles.muted}>
+                        {dateTime(m.movement_date)} · {m.user_name}
+                        {m.order_number ? ` · ${m.order_number}` : ''}
+                        {m.reason ? ` · ${m.reason}` : ''}
+                      </Text>
+                    </View>
+                    <Badge label={`${t(`movement.${m.movement_type}`)} ${m.quantity_change > 0 ? '+' : ''}${formatNumber(m.quantity_change)}`} tone={movementTone[m.movement_type]} />
+                  </View>
+                </ListItem>
+              ))}
+            </>
+          )}
+        </ListGroup>
+      </View>
 
       <BatchDetail batchId={selected} onClose={() => setSelected(null)} />
-      <ReceiveForm visible={receiving} onClose={() => setReceiving(false)} />
+      <ReceiveForm
+        medicines={medicines}
+        visible={receiving}
+        onClose={() => setReceiving(false)}
+        onOpenMedicines={() => onNavigate('medicines')}
+      />
     </ScrollView>
   );
 }
 
-function ReceiveForm({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function ReceiveForm({ medicines, visible, onClose, onOpenMedicines }: {
+  medicines?: Medicine[];
+  visible: boolean;
+  onClose: () => void;
+  onOpenMedicines: () => void;
+}) {
   const { t } = useI18n();
   const styles = useStyles();
   const { colors } = useTheme();
   const toast = useToast();
   const db = useSQLiteContext();
   const user = useUser();
-  const { data: medicines } = useDbQuery((db) => listMedicines(db));
   const { data: suppliers } = useDbQuery((db) => listSuppliers(db));
   const [form, setForm] = useState(emptyReceive);
   const { errors, error, saving, submit, reset } = useSubmit();
@@ -201,6 +256,19 @@ function ReceiveForm({ visible, onClose }: { visible: boolean; onClose: () => vo
       toast(t('inventory.received'));
     }
   };
+
+  if (medicines?.length === 0) {
+    return (
+      <Sheet
+        visible={visible}
+        title={t('inventory.receiveTitle')}
+        onClose={close}
+        footer={<Button title={t('medicines.title')} icon="medkit-outline" onPress={() => { close(); onOpenMedicines(); }} />}
+      >
+        <EmptyState icon="medkit-outline" text={t('medicines.noActive')} hint={t('inventory.medicineRequired')} />
+      </Sheet>
+    );
+  }
 
   const medicine = medicines?.find((m) => m.medicine_id === form.medicine_id);
   return (
@@ -377,8 +445,22 @@ function StockChangeForm({ batch, kind, onClose }: { batch: Batch; kind: 'adjust
 }
 
 const useStyles = makeStyles((colors) => ({
-  chips: { gap: 8, paddingBottom: 10 },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  toolbar: { paddingTop: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  toolbarWide: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  modeField: { width: 268 },
+  searchField: { flex: 1, minWidth: 0 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingBottom: 14 },
+  status: { padding: 16 },
+  tableHeading: { backgroundColor: colors.surfaceAlt, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 11, paddingHorizontal: 16 },
+  columnHeading: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  listItem: { paddingVertical: 12, paddingHorizontal: 16 },
+  batchCell: { flex: 1, minWidth: 0, gap: 3 },
+  batchIcon: { width: 40, height: 40, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', borderRadius: 11, marginRight: 4 },
+  batchIconCompact: { width: 34, height: 34, borderRadius: 9, marginRight: 4 },
+  stateCell: { width: 114 },
+  expiryCell: { width: 103 },
+  quantityCell: { width: 122, textAlign: 'right' },
+  chevronCell: { width: 16, flexShrink: 0 },
   name: { fontSize: 15, fontWeight: '600', color: colors.text, flexShrink: 1 },
   muted: { fontSize: 13, color: colors.muted },
   logRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -386,5 +468,6 @@ const useStyles = makeStyles((colors) => ({
   pair: { flexDirection: 'row', gap: 10 },
   batchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   right: { alignItems: 'flex-end', gap: 2 },
-  expiry: { fontSize: 14, fontWeight: '600' },
+  expiry: { fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  quantity: { color: colors.muted, fontSize: 13, fontVariant: ['tabular-nums'] },
 }));

@@ -7,7 +7,7 @@ import { useToast } from '../../components/feedback';
 import { FormModal } from '../../components/FormModal';
 import { useSubmit } from '../../components/hooks';
 import { Sheet } from '../../components/Sheet';
-import { Badge, Button, Card, Chip, EmptyState, ErrorBanner, Field, KeyValue, ListGroup, ListItem, LoadingState, SearchBar, SectionTitle, ToggleField, type BadgeTone } from '../../components/ui';
+import { Badge, Button, Card, Chip, EmptyState, ErrorBanner, Field, Icon, KeyValue, ListGroup, ListItem, LoadingState, SearchBar, SectionTitle, ToggleField, type BadgeTone } from '../../components/ui';
 import { useDbQuery } from '../../db/DataContext';
 import { getOrderDetail, listOrders, type OrderLine, type OrderStatus } from '../../db/repository';
 import { dateTime, money } from '../../format';
@@ -15,7 +15,7 @@ import { useI18n, type TranslationKey } from '../../i18n';
 import { can } from '../../services/permissions';
 import { refundOrder } from '../../services/sales';
 import { useUser } from '../../session';
-import { makeStyles } from '../../theme';
+import { makeStyles, radius, useTheme } from '../../theme';
 
 export const orderTone: Record<OrderStatus, BadgeTone> = { PENDING: 'warning', COMPLETED: 'success', CANCELLED: 'neutral', REFUNDED: 'danger' };
 
@@ -29,6 +29,7 @@ const PERIODS: [number | null, TranslationKey][] = [
 
 export function OrdersScreen() {
   const { t, tn } = useI18n();
+  const { colors } = useTheme();
   const styles = useStyles();
   const user = useUser();
   const ownOnly = !can(user, 'orders.viewAll');
@@ -43,39 +44,45 @@ export function OrdersScreen() {
 
   return (
     <View>
-      <SearchBar value={search} onChangeText={setSearch} placeholder={t('orders.search')} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {PERIODS.map(([d, label]) => (
-          <Chip key={d ?? 'all'} label={t(label)} active={days === d} onPress={() => setDays(d)} />
-        ))}
-      </ScrollView>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {STATUSES.map((s) => (
-          <Chip key={s} label={s === 'all' ? t('common.all') : t(`order.${s}`)} active={status === s} onPress={() => setStatus(s)} />
-        ))}
-      </ScrollView>
-      {ownOnly ? <Text style={[styles.muted, { marginBottom: 8 }]}>{t('orders.ownOnly')}</Text> : null}
+      <Card style={styles.filters}>
+        <SearchBar value={search} onChangeText={setSearch} placeholder={t('orders.search')} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {PERIODS.map(([d, label]) => (
+            <Chip key={d ?? 'all'} label={t(label)} active={days === d} onPress={() => setDays(d)} />
+          ))}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {STATUSES.map((s) => (
+            <Chip key={s} label={s === 'all' ? t('common.all') : t(`order.${s}`)} active={status === s} onPress={() => setStatus(s)} />
+          ))}
+        </ScrollView>
+        {ownOnly ? <Text style={styles.muted}>{t('orders.ownOnly')}</Text> : null}
+      </Card>
       {error ? <ErrorBanner message={error} /> : null}
       {!orders && !error ? <LoadingState /> : null}
       {orders?.length === 0 ? <EmptyState icon="receipt-outline" text={t('orders.empty')} hint={t('orders.emptyHint')} /> : null}
       {orders?.length ? (
         <ListGroup>
-          {orders.map((o, i) => (
-            <ListItem index={i} key={o.order_id} onPress={() => setSelected(o.order_id)}>
-              <View style={styles.top}>
-                <Text style={styles.name}>{o.order_number}</Text>
-                <View style={{ flex: 1 }} />
-                <Badge label={o.status === 'COMPLETED' && o.refunded_amount ? t('order.partRefunded') : t(`order.${o.status}`)} tone={o.refunded_amount ? 'warning' : orderTone[o.status]} />
-              </View>
-              <View style={styles.top}>
-                <Text style={styles.muted}>
-                  {dateTime(o.created_at)} · {o.customer_name ?? t('common.walkIn')} · {tn('count.items', o.item_count)} · {o.staff_name}
-                </Text>
-                <View style={{ flex: 1 }} />
-                <Text style={styles.amount}>{money(o.total_amount - o.refunded_amount)}</Text>
-              </View>
-            </ListItem>
-          ))}
+          {orders.map((o, i) => {
+            const partlyRefunded = o.status === 'COMPLETED' && o.refunded_amount > 0;
+            return (
+              <ListItem index={i} key={o.order_id} onPress={() => setSelected(o.order_id)}>
+                <View style={styles.orderRow}>
+                  <View style={styles.orderIcon}><Icon name="receipt-outline" size={18} color={colors.primary} /></View>
+                  <View style={styles.orderCopy}>
+                    <Text style={styles.name}>{o.order_number}</Text>
+                    <Text style={styles.muted}>
+                      {dateTime(o.created_at)} · {o.customer_name ?? t('common.walkIn')} · {tn('count.items', o.item_count)} · {o.staff_name}
+                    </Text>
+                  </View>
+                  <View style={styles.orderSummary}>
+                    <Text style={styles.amount}>{money(o.total_amount - o.refunded_amount)}</Text>
+                    <Badge label={partlyRefunded ? t('order.partRefunded') : t(`order.${o.status}`)} tone={partlyRefunded ? 'warning' : orderTone[o.status]} />
+                  </View>
+                </View>
+              </ListItem>
+            );
+          })}
         </ListGroup>
       ) : null}
       <OrderDetail orderId={selected} onClose={() => setSelected(null)} />
@@ -187,8 +194,13 @@ function RefundForm({ orderId, lines, onClose }: { orderId: number; lines: Order
 }
 
 const useStyles = makeStyles((colors) => ({
+  filters: { marginBottom: 14, paddingBottom: 6 },
   chips: { gap: 8, paddingBottom: 10 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  orderRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  orderIcon: { width: 36, height: 36, borderRadius: radius, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft },
+  orderCopy: { flex: 1, minWidth: 0, gap: 3 },
+  orderSummary: { alignItems: 'flex-end', gap: 4, maxWidth: '38%' },
   name: { fontSize: 15, fontWeight: '600', color: colors.text, flexShrink: 1 },
   muted: { fontSize: 13, color: colors.muted, flexShrink: 1 },
   amount: { fontSize: 15, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },

@@ -9,11 +9,12 @@ import { Badge, Button, Card, Icon, KeyValue, LoadingState, SectionTitle } from 
 import { useDataChange, useDbQuery } from '../../db/DataContext';
 import { friendlyError, integrityIssueText } from '../../db/errors';
 import { MIGRATIONS, resetDatabase, SCHEMA_VERSION } from '../../db/migrations';
-import { DATABASE_NAME } from '../../db/schema';
+import { activeDatabaseName, demoMode } from '../../db/open';
 import { checkDatabase, compactDatabase, databaseInfo, optimizeDatabase, type HealthReport } from '../../db/sqlRunner';
 import { serialized } from '../../db/transaction';
 import { formatBytes, formatNumber } from '../../format';
 import { tryT, useI18n } from '../../i18n';
+import { useSession } from '../../session';
 import { makeStyles, monoFont, radius, useTheme } from '../../theme';
 
 /** Facts about the SQLite file, the migration history, a health check and maintenance actions. */
@@ -29,7 +30,7 @@ export function DatabaseOverview() {
       {info ? (
         <Enter>
           <Card>
-            <KeyValue label={t('about.file')} value={DATABASE_NAME} />
+            <KeyValue label={t('about.file')} value={activeDatabaseName} />
             <KeyValue label={t('dbinfo.engine')} value={`SQLite ${info.sqliteVersion}`} />
             <KeyValue
               label={t('dbinfo.schema')}
@@ -120,6 +121,7 @@ function Maintenance() {
   const styles = useStyles();
   const db = useSQLiteContext();
   const { notifyChange } = useDataChange();
+  const { logout } = useSession();
   const toast = useToast();
   const [busy, setBusy] = useState<'optimize' | 'compact' | 'reset' | null>(null);
 
@@ -151,6 +153,7 @@ function Maintenance() {
     if (!(await confirmAction(t('sql.resetTitle'), t('sql.resetBody'), t('sql.reset')))) return;
     await act('reset', async () => {
       await resetDatabase(db);
+      logout();
       return t('sql.resetDone');
     });
   };
@@ -170,8 +173,8 @@ function Maintenance() {
       <SectionTitle>{t('sql.maintenance')}</SectionTitle>
       <Card style={{ paddingVertical: 4 }}>
         {action(t('dbinfo.optimize'), t('dbinfo.optimizeHint'), <Button title={t('dbinfo.optimize')} variant="secondary" small onPress={optimize} loading={busy === 'optimize'} disabled={busy !== null && busy !== 'optimize'} />)}
-        {action(t('dbinfo.compact'), t('dbinfo.compactHint'), <Button title={t('dbinfo.compact')} variant="secondary" small onPress={compact} loading={busy === 'compact'} disabled={busy !== null && busy !== 'compact'} />)}
-        {action(t('sql.resetHeading'), t('sql.resetHint'), <Button title={t('sql.reset')} variant="danger" small onPress={reset} loading={busy === 'reset'} disabled={busy !== null && busy !== 'reset'} />, true)}
+        {action(t('dbinfo.compact'), t('dbinfo.compactHint'), <Button title={t('dbinfo.compact')} variant="secondary" small onPress={compact} loading={busy === 'compact'} disabled={busy !== null && busy !== 'compact'} />, !demoMode)}
+        {demoMode ? action(t('sql.resetHeading'), t('sql.resetHint'), <Button title={t('sql.reset')} variant="danger" small onPress={reset} loading={busy === 'reset'} disabled={busy !== null && busy !== 'reset'} />, true) : null}
       </Card>
     </>
   );

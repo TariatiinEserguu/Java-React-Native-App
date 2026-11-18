@@ -14,6 +14,8 @@ import { checkDatabase, compactDatabase, databaseInfo, explainQueryPlan, optimiz
 import { runInTransaction, serialized } from '../src/db/transaction';
 import { setLanguage } from '../src/i18n/core';
 import { sellableBatches } from '../src/services/sales';
+import { createFirstAdministrator, hasAccounts, login } from '../src/services/users';
+import { ValidationError } from '../src/services/validate';
 import { openTestDb } from './nodeDb';
 
 setLanguage('en');
@@ -70,7 +72,7 @@ describe('migrations', () => {
     // Things an upgrade must handle: a user's own view, and an app view that is missing.
     await db.execAsync('CREATE VIEW my_report AS SELECT order_number FROM orders; DROP VIEW v_sales;');
 
-    const result = await migrate(db);
+    const result = await migrate(db, { seed: false });
     assert.deepEqual(result.applied, [2]);
     assert.equal(await schemaVersion(db), 2);
     assert.equal(await count(db, 'orders'), orders);
@@ -145,7 +147,31 @@ describe('connection', () => {
   });
 });
 
-describe('query plans use the version 2 indexes', () => {
+test('first-run setup creates exactly one administrator and preserves that account on reopening', async () => {
+  const db = openTestDb();
+  await migrate(db, { seed: false });
+  assert.equal(await hasAccounts(db), false);
+  const account = { full_name: 'Pharmacy Administrator', username: 'owner', password: 'test-password-42' };
+
+  await assert.rejects(createFirstAdministrator(db, { ...account, password: 'invalid' }), ValidationError);
+  assert.equal(await hasAccounts(db), false);
+  const [winner, rejected] = await Promise.allSettled([
+    createFirstAdministrator(db, account),
+    createFirstAdministrator(db, { ...account, username: 'second_owner' }),
+  ]);
+  assert.equal(winner.status, 'fulfilled');
+  assert.equal(rejected.status, 'rejected');
+  assert.equal(await count(db, 'users'), 1);
+  assert.equal(await hasAccounts(db), true);
+
+  await migrate(db, { seed: false });
+  const administrator = await login(db, account.username, account.password);
+  assert.equal(administrator.full_name, account.full_name);
+  assert.equal(administrator.role, 'ADMIN');
+  assert.equal(await count(db, 'users'), 1);
+});
+
+describe('query plans use indexed lookups', () => {
   test('daily sales, movement log and FEFO allocation', async () => {
     const db = openTestDb();
     await migrate(db);
@@ -153,15 +179,15 @@ describe('query plans use the version 2 indexes', () => {
     assert.match(await plan(db, "SELECT * FROM v_sales WHERE sale_date BETWEEN '2026-01-01' AND '2026-12-31'"), /idx_orders_sale_day/);
     assert.match(await plan(db, "SELECT * FROM stock_movements WHERE date(movement_date) BETWEEN '2026-01-01' AND '2026-12-31'"), /idx_movements_day/);
     assert.match(await plan(db, 'SELECT * FROM stock_movements ORDER BY movement_date DESC, movement_id DESC LIMIT 100'), /idx_movements_date/);
-    assert.match(
-      await plan(
-        db,
-        `SELECT batch_id FROM medicine_batches
-         WHERE medicine_id = 1 AND is_active = 1 AND quantity_remaining > 0 AND expiry_date >= date('now', 'localtime')
-         ORDER BY expiry_date, batch_id`
-      ),
-      /idx_batches_fefo/
+    const fefoPlan = await plan(
+      db,
+      `SELECT batch_id, quantity_remaining, expiry_date FROM medicine_batches
+       WHERE medicine_id = 1 AND is_active = 1 AND quantity_remaining > 0 AND expiry_date >= date('now', 'localtime')
+       ORDER BY expiry_date, batch_id`
     );
+    // Both indexes support the same range lookup and order. SQLite's choice depends on statistics.
+    assert.match(fefoPlan, /SEARCH medicine_batches USING (?:COVERING )?INDEX (?:idx_batches_fefo|idx_batches_medicine_expiry) \(medicine_id=\? AND expiry_date>\?\)/);
+    assert.doesNotMatch(fefoPlan, /TEMP B-TREE/);
     // And FEFO still picks the earliest-expiring sellable batch first.
     const batches = await sellableBatches(db, 1);
     assert.deepEqual(

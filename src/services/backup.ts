@@ -2,6 +2,7 @@ import { backupDatabaseAsync, openDatabaseAsync, type SQLiteDatabase } from 'exp
 import { Platform } from 'react-native';
 
 import { migrate, schemaVersion, SCHEMA_VERSION } from '../db/migrations';
+import { demoMode } from '../db/open';
 import { serialized } from '../db/transaction';
 import { AppError, assertCan, type SessionUser } from './permissions';
 import { writeSetting } from './settings';
@@ -10,7 +11,7 @@ import { t } from '../i18n/core';
 // FR-20 / TC-16: copies the whole database to a second SQLite file in the app's private storage
 // using SQLite's online backup API, and restores from it. Not available on web.
 
-export const BACKUP_DATABASE_NAME = 'pharmacare-backup.db';
+export const BACKUP_DATABASE_NAME = demoMode ? 'pharmacare-demo-backup.db' : 'pharmacare-backup.db';
 
 export const backupSupported = Platform.OS !== 'web';
 

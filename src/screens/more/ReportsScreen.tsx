@@ -4,7 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { Text } from '../../components/Text';
 import { DataTable } from '../../components/DataTable';
 import { SelectField } from '../../components/SelectField';
-import { Chip, EmptyState, ErrorBanner, LoadingState } from '../../components/ui';
+import { Card, Chip, EmptyState, ErrorBanner, LoadingState } from '../../components/ui';
 import { useDbQuery } from '../../db/DataContext';
 import { REPORTS } from '../../db/reports';
 import { shortDate, todayIso } from '../../format';
@@ -46,26 +46,28 @@ export function ReportsScreen() {
     <View>
       {report ? (
         <>
-          <SelectField
-            label={t('reports.report')}
-            value={report.id}
-            onChange={setSelected}
-            options={reports.map((r) => ({ value: r.id, label: t(`report.${r.id}.title` as TranslationKey), detail: t(`report.${r.id}.desc` as TranslationKey) }))}
-          />
-          <Text style={[styles.muted, { marginBottom: 8 }]}>{t(`report.${report.id}.desc` as TranslationKey)}</Text>
-          {report.usesRange ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              {RANGES.map(([label, d]) => (
-                <Chip key={label} label={t(label)} active={days === d} onPress={() => setDays(d)} />
-              ))}
-            </ScrollView>
-          ) : null}
-          {report.usesRange ? (
-            <Text style={styles.muted}>{t('reports.range', { from: shortDate(range.from), to: shortDate(range.to) })}</Text>
-          ) : null}
+          <Card style={styles.filters}>
+            <SelectField
+              label={t('reports.report')}
+              value={report.id}
+              onChange={setSelected}
+              options={reports.map((r) => ({ value: r.id, label: t(`report.${r.id}.title` as TranslationKey), detail: t(`report.${r.id}.desc` as TranslationKey) }))}
+            />
+            <Text style={styles.muted}>{t(`report.${report.id}.desc` as TranslationKey)}</Text>
+            {report.usesRange ? (
+              <View style={styles.range}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                  {RANGES.map(([label, d]) => (
+                    <Chip key={label} label={t(label)} active={days === d} onPress={() => setDays(d)} />
+                  ))}
+                </ScrollView>
+                <Text style={styles.muted}>{t('reports.range', { from: shortDate(range.from), to: shortDate(range.to) })}</Text>
+              </View>
+            ) : null}
+          </Card>
           {error ? <ErrorBanner message={error} /> : null}
           {!data && !error ? <LoadingState /> : null}
-          {data?.summary ? <Text style={styles.summary}>{data.summary}</Text> : null}
+          {data?.summary ? <Card style={styles.summaryCard}><Text style={styles.summary}>{data.summary}</Text></Card> : null}
           {data ? (
             data.rows.length ? (
               <DataTable
@@ -85,7 +87,10 @@ export function ReportsScreen() {
 }
 
 const useStyles = makeStyles((colors) => ({
-  muted: { fontSize: 13, color: colors.muted },
-  chips: { gap: 8, paddingBottom: 8 },
-  summary: { fontSize: 15, fontWeight: '700', color: colors.primary, marginVertical: 8 },
+  filters: { marginBottom: 14 },
+  muted: { fontSize: 13, lineHeight: 18, color: colors.muted },
+  range: { marginTop: 12, gap: 8 },
+  chips: { gap: 8 },
+  summaryCard: { marginBottom: 12, backgroundColor: colors.primarySoft },
+  summary: { fontSize: 15, fontWeight: '600', color: colors.primary },
 }));

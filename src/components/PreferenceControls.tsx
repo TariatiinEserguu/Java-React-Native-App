@@ -48,6 +48,7 @@ function PillGroup<T extends string>({
             accessibilityRole="radio"
             accessibilityLabel={option.a11yLabel}
             accessibilityState={{ checked: isActive }}
+            aria-checked={isActive}
             onPress={() => onChange(option.value)}
             onLayout={onItemLayout(i)}
             style={(state: PressState) => [

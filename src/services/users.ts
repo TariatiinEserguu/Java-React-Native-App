@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { serialized } from '../db/transaction';
 import { hashPassword, newSalt, passwordProblem, verifyPassword } from './password';
 import { AppError, assertCan, ROLES, type Role, type SessionUser } from './permissions';
 import { Checker } from './validate';
@@ -20,6 +21,11 @@ export async function login(db: SQLiteDatabase, username: string, password: stri
 }
 
 export type UserInput = { full_name: string; username: string; role: string; password: string };
+export type FirstAdministratorInput = Omit<UserInput, 'role'>;
+
+export async function hasAccounts(db: SQLiteDatabase): Promise<boolean> {
+  return (await db.getFirstAsync('SELECT 1 FROM users LIMIT 1')) !== null;
+}
 
 function checkUsername(c: Checker, username: string) {
   const v = username.trim();
@@ -27,18 +33,21 @@ function checkUsername(c: Checker, username: string) {
   return v;
 }
 
-/** Inner insert shared with the seed script (no permission check). */
-export async function insertUser(db: SQLiteDatabase, input: { full_name: string; username: string; role: Role; password: string }) {
+type ValidatedUserInput = Omit<UserInput, 'role'> & { role: Role };
+
+/** Inner insert shared with the seed script. The first administrator also requires an empty users table. */
+export async function insertUser(db: SQLiteDatabase, input: ValidatedUserInput, { firstAdministrator = false } = {}) {
   const salt = newSalt();
   const result = await db.runAsync(
-    'INSERT INTO users (full_name, username, password_hash, password_salt, role) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO users (full_name, username, password_hash, password_salt, role)
+     SELECT ?, ?, ?, ?, ?${firstAdministrator ? ' WHERE NOT EXISTS (SELECT 1 FROM users)' : ''}`,
     input.full_name, input.username, hashPassword(input.password, salt), salt, input.role
   );
+  if (!result.changes) throw new AppError(t('auth.setupComplete'));
   return result.lastInsertRowId;
 }
 
-export async function createUser(db: SQLiteDatabase, actor: SessionUser, input: UserInput) {
-  assertCan(actor, 'users.manage');
+function validateUser(input: UserInput): ValidatedUserInput {
   const c = new Checker();
   const value = {
     full_name: c.text('full_name', input.full_name, t('field.fullName'), 2, 100),
@@ -49,7 +58,18 @@ export async function createUser(db: SQLiteDatabase, actor: SessionUser, input: 
   const problem = passwordProblem(input.password);
   if (problem) c.fail('password', problem);
   c.done();
-  return insertUser(db, value);
+  return value;
+}
+
+export async function createFirstAdministrator(db: SQLiteDatabase, input: FirstAdministratorInput) {
+  const value = validateUser({ ...input, role: 'ADMIN' });
+  // The INSERT checks for existing accounts as part of the write, including across connections.
+  return serialized(() => insertUser(db, value, { firstAdministrator: true }));
+}
+
+export async function createUser(db: SQLiteDatabase, actor: SessionUser, input: UserInput) {
+  assertCan(actor, 'users.manage');
+  return insertUser(db, validateUser(input));
 }
 
 export async function updateUser(db: SQLiteDatabase, actor: SessionUser, id: number, input: { full_name: string; role: string }) {

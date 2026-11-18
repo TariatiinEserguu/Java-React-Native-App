@@ -1,6 +1,6 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
-import { Animated, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Animated, FlatList, Platform, ScrollView, useWindowDimensions, View } from 'react-native';
 
 import { Text } from '../components/Text';
 import { useToast } from '../components/feedback';
@@ -10,7 +10,7 @@ import { animateNextLayout, Enter, usePop, usePresence } from '../components/mot
 import { useSubmit } from '../components/hooks';
 import { SelectField } from '../components/SelectField';
 import { Sheet } from '../components/Sheet';
-import { Badge, Button, Card, Chip, EmptyState, Field, focusRing, Icon, KeyValue, ListGroup, ListItem, LoadingState, PressableScale, ScreenHeader, SearchBar, SectionTitle, screen, type PressState } from '../components/ui';
+import { Badge, Button, Card, Chip, EmptyState, ErrorBanner, Field, focusRing, Icon, KeyValue, LoadingState, PressableScale, ScreenHeader, SearchBar, Segmented, screen, type PressState } from '../components/ui';
 import { useDbQuery } from '../db/DataContext';
 import { getOrderDetail, listCustomers, listMedicines, type Medicine } from '../db/repository';
 import { dateTime, medicineLabel, money, todayIso } from '../format';
@@ -24,16 +24,20 @@ import { makeStyles, radius, radiusLg, useTheme } from '../theme';
 type Line = { medicine: Medicine; quantity: number; prescription_id: number | null; prescription_label: string | null };
 
 export function SellScreen() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
+  const { colors } = useTheme();
   const styles = useStyles();
-  const wide = useWindowDimensions().width >= 1100;
+  const { width } = useWindowDimensions();
+  const wide = width >= 1100;
+  const compact = width < 440;
   const db = useSQLiteContext();
   const user = useUser();
   const toast = useToast();
   const [search, setSearch] = useState('');
-  const { data: medicines } = useDbQuery((db) => listMedicines(db, { search }), [search]);
+  const { data: medicines, error: catalogError } = useDbQuery((db) => listMedicines(db, { search }), [search]);
   const { data: customers } = useDbQuery((db) => listCustomers(db));
 
+  const [pane, setPane] = useState<'catalog' | 'cart'>('catalog');
   const [cart, setCart] = useState<Line[]>([]);
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [discount, setDiscount] = useState('');
@@ -41,11 +45,13 @@ export function SellScreen() {
   const [confirming, setConfirming] = useState(false);
   const [rxFor, setRxFor] = useState<Medicine | null>(null);
   const [receipt, setReceipt] = useState<CheckoutResult | null>(null);
-  const { error, saving, submit, reset } = useSubmit();
+  const { errors, error, saving, submit, reset } = useSubmit();
+  const checkoutPending = useRef(false);
 
   const subtotal = cart.reduce((s, l) => s + l.quantity * l.medicine.selling_price, 0);
-  const discountValue = Number(discount.replace(/[\s,]/g, '')) || 0;
-  const total = Math.max(subtotal - discountValue, 0);
+  const discountValue = Number(discount.replace(/[\s,₮]/g, ''));
+  const displayDiscount = Number.isInteger(discountValue) && discountValue > 0 ? discountValue : 0;
+  const total = Math.max(subtotal - displayDiscount, 0);
 
   const add = (m: Medicine) => {
     const existing = cart.find((l) => l.medicine.medicine_id === m.medicine_id);
@@ -84,107 +90,142 @@ export function SellScreen() {
   };
 
   const confirm = async () => {
-    const result = await submit(() =>
-      checkout(db, user, {
-        customer_id: customerId,
-        payment_method: payment,
-        discount_amount: discountValue,
-        lines: cart.map((l) => ({ medicine_id: l.medicine.medicine_id, quantity: l.quantity, prescription_id: l.prescription_id })),
-      })
-    );
-    if (result) {
-      setConfirming(false);
-      setCart([]);
-      setDiscount('');
-      setCustomerId(null);
-      setPayment('CASH');
-      setReceipt(result);
-      toast(t('sell.saleCompleted'));
+    if (checkoutPending.current) return;
+    checkoutPending.current = true;
+    try {
+      const result = await submit(() =>
+        checkout(db, user, {
+          customer_id: customerId,
+          payment_method: payment,
+          discount_amount: discountValue,
+          lines: cart.map((l) => ({ medicine_id: l.medicine.medicine_id, quantity: l.quantity, prescription_id: l.prescription_id })),
+        })
+      );
+      if (result) {
+        setConfirming(false);
+        setCart([]);
+        setDiscount('');
+        setCustomerId(null);
+        setPayment('CASH');
+        setPane('catalog');
+        setReceipt(result);
+        toast(t('sell.saleCompleted'));
+      }
+    } finally {
+      checkoutPending.current = false;
     }
   };
 
   const itemCount = cart.reduce((s, l) => s + l.quantity, 0);
 
   const products = (
-    <>
-      <SearchBar value={search} onChangeText={setSearch} placeholder={t('sell.search')} />
-      {!medicines ? <LoadingState /> : null}
-      {medicines?.length === 0 ? <EmptyState icon="search-outline" text={t('medicines.empty')} hint={t('medicines.emptyHint')} /> : null}
-      {medicines?.length ? (
-        <ListGroup>
-          {medicines.slice(0, search ? 30 : 8).map((m, i) => {
-            const inCart = cart.find((l) => l.medicine.medicine_id === m.medicine_id)?.quantity ?? 0;
-            const left = m.sellable_stock - inCart;
-            return (
-              <ListItem key={m.medicine_id} index={i}>
-                <View style={styles.result}>
-                  <FormGlyph form={m.dosage_form} size={36} rx={!!m.requires_prescription} />
-                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <View style={styles.rowGap}>
-                      <Text style={styles.name} numberOfLines={1}>
-                        {medicineLabel(m)}
-                      </Text>
-                      {m.requires_prescription ? <Badge label={t('medicine.rx')} tone="rx" /> : null}
-                    </View>
-                    <Text style={styles.muted} numberOfLines={1}>
-                      {m.unit}, {left > 0 ? t('stock.available', { count: left }) : t('stock.OUT').toLowerCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.priceCol}>
-                    <Text style={styles.price}>{money(m.selling_price)}</Text>
-                    {inCart ? <Text style={styles.inCart}>{t('sell.inCart', { count: inCart })}</Text> : null}
-                  </View>
-                  <Button title={left <= 0 ? t('stock.OUT') : t('common.add')} icon={left <= 0 ? undefined : 'add'} small variant={inCart ? 'secondary' : 'primary'} disabled={left <= 0} onPress={() => add(m)} />
+    <View style={[styles.panel, styles.catalog]}>
+      <View style={styles.catalogHead}>
+        {wide ? (
+          <View style={styles.panelHeading}>
+            <Icon name="medkit-outline" size={20} color={colors.primary} />
+            <Text accessibilityRole="header" style={styles.panelTitle}>{t('sell.catalog')}</Text>
+            {medicines ? <Text style={styles.muted}>{tn('count.medicines', medicines.length)}</Text> : null}
+          </View>
+        ) : null}
+        <SearchBar value={search} onChangeText={setSearch} placeholder={t('sell.search')} />
+        {catalogError ? <ErrorBanner message={catalogError} /> : null}
+      </View>
+      <FlatList
+        data={medicines}
+        keyExtractor={(medicine) => String(medicine.medicine_id)}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.results, !wide && cart.length > 0 && styles.barSpace]}
+        ItemSeparatorComponent={() => <View style={styles.rowDivider} />}
+        ListEmptyComponent={medicines
+          ? <EmptyState icon="search-outline" text={t('medicines.empty')} hint={t('medicines.emptyHint')} />
+          : !catalogError ? <LoadingState rows={4} /> : undefined}
+        renderItem={({ item: m }) => {
+          const inCart = cart.find((line) => line.medicine.medicine_id === m.medicine_id)?.quantity ?? 0;
+          const left = m.sellable_stock - inCart;
+          return (
+            <View style={styles.result}>
+              <FormGlyph form={m.dosage_form} size={36} rx={!!m.requires_prescription} />
+              <View style={styles.productInfo}>
+                <View style={styles.rowGap}>
+                  <Text style={styles.name}>{medicineLabel(m)}</Text>
+                  {m.requires_prescription ? <Badge label={t('medicine.rx')} tone="rx" /> : null}
                 </View>
-              </ListItem>
-            );
-          })}
-        </ListGroup>
-      ) : null}
-      {!search && (medicines?.length ?? 0) > 8 ? <Text style={styles.more}>{t('sell.typeToSearch', { count: medicines?.length ?? 0 })}</Text> : null}
-    </>
+                <View style={styles.productMeta}>
+                  {compact ? <Text style={styles.price}>{money(m.selling_price)}</Text> : null}
+                  <Text style={styles.muted}>{left > 0 ? t('stock.available', { count: left }) : t('stock.OUT')}</Text>
+                </View>
+                {compact && inCart > 0 ? <Text style={styles.inCart}>{t('sell.inCart', { count: inCart })}</Text> : null}
+              </View>
+              {!compact ? (
+                <View style={styles.priceCol}>
+                  <Text style={styles.price}>{money(m.selling_price)}</Text>
+                  {inCart > 0 ? <Text style={styles.inCart}>{t('sell.inCart', { count: inCart })}</Text> : null}
+                </View>
+              ) : null}
+              <Button title={t('common.add')} icon="add" small variant={inCart ? 'secondary' : 'primary'} disabled={left <= 0} onPress={() => add(m)} style={styles.addButton} />
+            </View>
+          );
+        }}
+      />
+    </View>
   );
 
   const cartList = (
-    <>
-      <SectionTitle right={cart.length ? <Button title={t('sell.clearCart')} variant="ghost" small onPress={clearCart} /> : undefined}>
-        {t('sell.cart', { count: itemCount })}
-      </SectionTitle>
-      {cart.length === 0 ? (
-        <EmptyState icon="cart-outline" text={t('sales.cartEmpty')} hint={t('sell.cartHint')} />
-      ) : (
-        <ListGroup>
-          {cart.map((l, i) => (
-            <Enter key={l.medicine.medicine_id} offset={-6} style={[styles.cartRow, i > 0 && styles.rowDivider]}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.name} numberOfLines={2}>
-                  {medicineLabel(l.medicine)}
-                </Text>
-                <Text style={styles.muted}>
-                  {money(l.medicine.selling_price)} {t('sell.each')}
-                  {l.prescription_label ? `, ${t('sell.rxLabel', { label: l.prescription_label })}` : ''}
-                </Text>
-              </View>
+    <View style={[styles.panel, styles.cartColumn, !wide && styles.mobileCart]}>
+      {wide || cart.length > 0 ? (
+        <View style={[styles.cartHead, styles.rowDividerBottom]}>
+          {wide ? <Icon name="cart-outline" size={22} color={colors.primary} /> : null}
+          {wide ? <Text accessibilityRole="header" style={styles.panelTitle}>{t('sell.cart', { count: itemCount })}</Text> : <View style={{ flex: 1 }} />}
+          {cart.length > 0 ? <Button title={t('sell.clearCart')} variant="ghost" icon="trash-outline" small onPress={clearCart} /> : null}
+        </View>
+      ) : null}
+      <ScrollView contentContainerStyle={!wide && cart.length > 0 && styles.barSpace} keyboardShouldPersistTaps="handled">
+        {cart.length === 0 ? (
+          <EmptyState icon="cart-outline" text={t('sales.cartEmpty')} hint={t('sell.cartHint')} />
+        ) : cart.map((l, i) => (
+          <Enter key={l.medicine.medicine_id} offset={-6} style={[styles.cartRow, i > 0 && styles.rowDivider]}>
+            <View style={styles.cartProduct}>
+              <Text style={styles.name}>{medicineLabel(l.medicine)}</Text>
+              <Text style={styles.muted}>
+                {money(l.medicine.selling_price)} {t('sell.each')}
+                {l.prescription_label ? ` · ${t('sell.rxLabel', { label: l.prescription_label })}` : ''}
+              </Text>
+            </View>
+            <View style={styles.cartLineActions}>
               <View style={styles.stepper}>
                 <StepButton label="−" onPress={() => changeQty(l.medicine.medicine_id, l.quantity - 1)} />
                 <Quantity value={l.quantity} />
                 <StepButton label="+" onPress={() => changeQty(l.medicine.medicine_id, l.quantity + 1)} />
               </View>
               <Text style={styles.lineTotal}>{money(l.quantity * l.medicine.selling_price)}</Text>
-            </Enter>
-          ))}
-          <View style={[styles.subtotalRow, styles.rowDivider, styles.subtotalInList]}>
+            </View>
+          </Enter>
+        ))}
+      </ScrollView>
+      {wide ? (
+        <View style={[styles.cartFooter, styles.rowDivider]}>
+          <View style={styles.subtotalRow}>
             <Text style={styles.subtotalLabel}>{t('common.subtotal')}</Text>
-            <Text style={styles.subtotalValue}>{money(subtotal)}</Text>
+            <Text style={styles.footerTotal}>{money(subtotal)}</Text>
           </View>
-        </ListGroup>
-      )}
-    </>
+          <Button title={t('sell.checkout')} icon="card-outline" onPress={openCheckout} disabled={cart.length === 0} />
+        </View>
+      ) : null}
+    </View>
   );
 
   const dialogs = (
     <>
-      <FormModal visible={confirming} title={t('sell.checkout')} submitLabel={t('sell.confirm', { total: money(total) })} onClose={() => setConfirming(false)} onSubmit={confirm} submitting={saving} error={error}>
+      <FormModal
+        visible={confirming}
+        title={t('sell.checkout')}
+        submitLabel={t('sell.confirm', { total: money(total) })}
+        onClose={() => { if (!checkoutPending.current) setConfirming(false); }}
+        onSubmit={confirm}
+        submitting={saving}
+        error={error}
+      >
         <SelectField
           label={t('field.customer')}
           value={customerId ?? 0}
@@ -197,6 +238,7 @@ export function SellScreen() {
           onChangeText={setDiscount}
           keyboardType="number-pad"
           placeholder="0"
+          error={errors.discount_amount}
           hint={can(user, 'sales.unlimitedDiscount') ? undefined : t('sell.discountHint', { percent: CASHIER_MAX_DISCOUNT_PERCENT })}
         />
         <Text style={styles.label}>{t('field.paymentMethod')}</Text>
@@ -210,7 +252,7 @@ export function SellScreen() {
             <KeyValue key={l.medicine.medicine_id} label={`${medicineLabel(l.medicine)} × ${l.quantity}`} value={money(l.quantity * l.medicine.selling_price)} />
           ))}
           <KeyValue label={t('common.subtotal')} value={money(subtotal)} />
-          {discountValue ? <KeyValue label={t('field.discount')} value={`−${money(discountValue)}`} /> : null}
+          {displayDiscount ? <KeyValue label={t('field.discount')} value={`−${money(displayDiscount)}`} /> : null}
           <KeyValue label={t('common.total')} value={money(total)} strong />
         </Card>
       </FormModal>
@@ -229,40 +271,20 @@ export function SellScreen() {
     </>
   );
 
-  // Wide screens work like a till: products on the left, the cart always visible on the right.
-  if (wide) {
-    return (
-      <View style={styles.split}>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={[screen.content, styles.splitProducts]} keyboardShouldPersistTaps="handled">
-          <ScreenHeader title={t('sell.title')} />
-          {products}
-        </ScrollView>
-        <View style={styles.cartColumn}>
-          <ScrollView contentContainerStyle={styles.cartColumnContent} keyboardShouldPersistTaps="handled">
-            {cartList}
-          </ScrollView>
-          <View style={styles.cartFooter}>
-            <View style={styles.subtotalRow}>
-              <Text style={styles.subtotalLabel}>{t('common.subtotal')}</Text>
-              <Text style={styles.footerTotal}>{money(subtotal)}</Text>
-            </View>
-            <Button title={t('sell.checkout')} icon="card-outline" onPress={openCheckout} disabled={cart.length === 0} />
-          </View>
-        </View>
-        {dialogs}
-      </View>
-    );
-  }
-
-  // Phones: one scrolling column, with the checkout bar pinned to the bottom once the cart has items.
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={[screen.content, cart.length > 0 && { paddingBottom: 104 }]} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title={t('sell.title')} />
-        {products}
-        {cartList}
-      </ScrollView>
-      <CheckoutBar visible={cart.length > 0} count={itemCount} subtotal={subtotal} onPress={openCheckout} />
+    <View style={[screen.content, styles.workspace]}>
+      <ScreenHeader title={t('sell.title')} subtitle={wide ? t('sell.subtitle') : undefined} />
+      {wide ? <View style={styles.split}>{products}{cartList}</View> : (
+        <>
+          <Segmented options={[
+            ['catalog', t('sell.catalog')],
+            ['cart', t('sell.cart', { count: itemCount })],
+          ]} value={pane} onChange={setPane} />
+          <View style={[styles.pane, pane !== 'catalog' && styles.hidden]}>{products}</View>
+          <View style={[styles.pane, pane !== 'cart' && styles.hidden]}>{cartList}</View>
+          <CheckoutBar visible={cart.length > 0} count={itemCount} subtotal={subtotal} onPress={openCheckout} />
+        </>
+      )}
       {dialogs}
     </View>
   );
@@ -365,13 +387,15 @@ function PrescriptionForm({
 function Receipt({ result, onClose }: { result: CheckoutResult | null; onClose: () => void }) {
   const { t } = useI18n();
   const styles = useStyles();
-  const { data } = useDbQuery(
+  const { data, error } = useDbQuery(
     async (db) => (result ? { detail: await getOrderDetail(db, result.order_id), settings: await getSettings(db) } : null),
     [result?.order_id]
   );
   const detail = data?.detail;
   return (
     <Sheet visible={!!result} title={t('sell.saleComplete')} subtitle={result?.order_number} onClose={onClose} footer={<Button title={t('sell.newSale')} onPress={onClose} style={{ flex: 1 }} />}>
+      {error ? <ErrorBanner message={error} /> : null}
+      {!detail && !error ? <LoadingState rows={1} /> : null}
       {detail ? (
         <Card>
           <Text style={styles.receiptTitle}>{data?.settings.pharmacy_name}</Text>
@@ -397,25 +421,41 @@ function Receipt({ result, onClose }: { result: CheckoutResult | null; onClose: 
 }
 
 const useStyles = makeStyles((colors) => ({
-  result: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  workspace: { flex: 1, minHeight: 0, paddingBottom: 16 },
+  split: { flex: 1, minHeight: 0, flexDirection: 'row', gap: 18 },
+  pane: { flex: 1, minHeight: 0 },
+  hidden: { display: 'none' },
+  panel: { borderWidth: 1, borderColor: colors.border, borderRadius: radiusLg, backgroundColor: colors.surface, overflow: 'hidden' },
+  catalog: { flex: 1, minWidth: 0, minHeight: 0 },
+  catalogHead: { paddingHorizontal: 14, paddingTop: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  panelHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+  panelTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: colors.text },
+  results: { paddingHorizontal: 12, paddingBottom: 8 },
+  result: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, minHeight: 64 },
+  productInfo: { flex: 1, minWidth: 0, gap: 3 },
+  productMeta: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 8 },
   rowGap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   name: { fontSize: 15, fontWeight: '600', color: colors.text, flexShrink: 1 },
   muted: { fontSize: 13, color: colors.muted },
   priceCol: { alignItems: 'flex-end', gap: 2 },
   price: { fontSize: 15, fontWeight: '600', color: colors.text },
   inCart: { fontSize: 12, fontWeight: '600', color: colors.primary },
-  more: { textAlign: 'center', color: colors.muted, paddingVertical: 12, fontSize: 13 },
-  cartRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  addButton: { minHeight: 40 },
+  cartColumn: { width: 360, minHeight: 0 },
+  mobileCart: { width: '100%', flex: 1 },
+  cartHead: { minHeight: 54, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, gap: 10 },
+  cartRow: { gap: 8, paddingHorizontal: 14, paddingVertical: 11 },
+  cartProduct: { gap: 2 },
+  cartLineActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   rowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  step: { width: 34, height: 34, borderRadius: radius, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  rowDividerBottom: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius, backgroundColor: colors.surfaceAlt },
+  step: { width: 44, height: 40, borderRadius: radius, alignItems: 'center', justifyContent: 'center' },
   stepText: { fontSize: 18, fontWeight: '600', color: colors.primary },
-  qty: { minWidth: 28, textAlign: 'center', fontSize: 16, fontWeight: '600', color: colors.text },
-  lineTotal: { minWidth: 76, textAlign: 'right', fontWeight: '600', color: colors.text },
+  qty: { minWidth: 24, textAlign: 'center', fontSize: 15, fontWeight: '600', color: colors.text },
+  lineTotal: { textAlign: 'right', fontSize: 16, fontWeight: '600', color: colors.text },
   subtotalRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
-  subtotalInList: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surfaceAlt },
   subtotalLabel: { fontSize: 14, color: colors.muted },
-  subtotalValue: { fontSize: 17, fontWeight: '600', color: colors.text },
   footerTotal: { fontSize: 22, fontWeight: '600', color: colors.text, letterSpacing: -0.4 },
   label: { fontSize: 13, fontWeight: '600', color: colors.text, marginBottom: 6 },
   chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
@@ -423,12 +463,9 @@ const useStyles = makeStyles((colors) => ({
   receiptMeta: { fontSize: 12, color: colors.muted, textAlign: 'center' },
   receiptFooter: { fontSize: 13, color: colors.muted, textAlign: 'center', marginTop: 10 },
   divider: { height: 1, backgroundColor: colors.border, marginVertical: 8 },
-  split: { flex: 1, flexDirection: 'row' },
-  splitProducts: { maxWidth: 760 },
-  cartColumn: { width: 400, borderLeftWidth: 1, borderLeftColor: colors.border, backgroundColor: colors.surface },
-  cartColumnContent: { padding: 16, paddingTop: 0 },
-  cartFooter: { padding: 16, gap: 12, borderTopWidth: 1, borderTopColor: colors.border },
-  barWrap: { position: 'absolute', left: 12, right: 12, bottom: 12 },
+  cartFooter: { padding: 14, gap: 12, backgroundColor: colors.surfaceAlt },
+  barSpace: { paddingBottom: 86 },
+  barWrap: { position: 'absolute', left: 22, right: 22, bottom: 22 },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
