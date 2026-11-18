@@ -11,6 +11,18 @@ prescriptions, sales, refunds and an append-only stock ledger.
 Each device or browser profile stores its own database. Configure the pharmacy's dispensing workflow for the laws
 and operating procedures that apply to it.
 
+## Screenshots
+
+These screenshots use the optional sample workspace.
+
+### Desktop overview
+
+![Desktop overview with sales totals, recent orders, and inventory alerts](docs/screenshots/desktop-overview.png)
+
+| Mobile inventory | Checkout receipt in dark mode |
+| --- | --- |
+| <img src="docs/screenshots/mobile-inventory.png" alt="Mobile inventory with batch filters and expiry dates" width="270"> | <img src="docs/screenshots/dark-mode-receipt.png" alt="Completed sale receipt with line items and payment total in dark mode" width="520"> |
+
 ## Requirements
 
 - Node.js 24.3 or later in the 24.x release line (recommended), or Node.js 22.13 or later in the 22.x release line, and npm
@@ -62,7 +74,7 @@ npm run lint         # ESLint (expo lint)
 
 | Tab | What it does |
 | --- | --- |
-| **Today** | The day's net sales, quick actions (new sale, receive stock, find a medicine), a *Needs attention* queue (expired, expiring, low stock) that opens the matching filtered list, and recent sales |
+| **Overview** | The day's net sales, quick actions (new sale, receive stock, find a medicine), a *Needs attention* queue (expired, expiring, low stock) that opens the matching filtered list, and recent sales |
 | **Medicines** | Search by brand / generic name / barcode, filter by category or stock state, add / edit / deactivate, see batches |
 | **Sell** | Point of sale: a checkout bar pinned to the bottom on phones, products and cart side by side on wide screens; FEFO batch allocation, prescription check for Rx-only items, discounts, payment method, receipt |
 | **Inventory** | Batches by expiry state, receive stock, adjust, write off, quarantine, full movement log |
